@@ -1,0 +1,75 @@
+spring:
+  application:
+    name: fulfillmenthub-java-api
+  datasource:
+    url: ${DATABASE_URL}
+    username: ${DATABASE_USER}
+    password: ${DATABASE_PASSWORD}
+    hikari:
+      maximum-pool-size: 20
+      connection-timeout: 5000
+  flyway:
+    enabled: false
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+  jackson:
+    deserialization:
+      fail-on-unknown-properties: false
+server:
+  port: ${PORT:8080}
+  forward-headers-strategy: none
+  error:
+    include-message: never
+    include-stacktrace: never
+fulfillment:
+  messaging:
+    enabled: ${MESSAGING_ENABLED:false}
+    endpoint: ${SQS_ENDPOINT:http://localhost:4566}
+    region: ${AWS_REGION:us-east-1}
+    domain-queue: fh-domain-events
+    domain-dlq: fh-domain-events-dlq
+    webhook-queue: fh-webhooks-inbound
+    webhook-dlq: fh-webhooks-inbound-dlq
+    poll-ms: 1000
+  security:
+    signing-key: ${JWT_SIGNING_KEY}
+    issuer: fulfillmenthub
+    audience: fulfillmenthub-api
+    access-minutes: 15
+    session-days: 7
+  webhooks:
+    payment-key: ${PAYMENT_WEBHOOK_KEY}
+    delivery-key: ${DELIVERY_WEBHOOK_KEY}
+    tolerance-seconds: 300
+  providers:
+    payment:
+      enabled: ${PAYMENT_PROVIDER_ENABLED:false}
+      base-url: ${PAYMENT_PROVIDER_URL:http://localhost:8082}
+      token: ${PAYMENT_PROVIDER_TOKEN:local-payment-token}
+    delivery:
+      enabled: ${DELIVERY_PROVIDER_ENABLED:false}
+      base-url: ${DELIVERY_PROVIDER_URL:http://localhost:8082}
+      customer-id: ${DELIVERY_PROVIDER_CUSTOMER_ID:local-customer}
+      client-id: ${DELIVERY_PROVIDER_CLIENT_ID:local-client}
+      client-secret: ${DELIVERY_PROVIDER_CLIENT_SECRET:local-secret}
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus
+  tracing:
+    sampling:
+      probability: ${TRACING_SAMPLING:1.0}
+  otlp:
+    tracing:
+      endpoint: ${OTEL_EXPORTER_OTLP_TRACES_ENDPOINT:http://localhost:4318/v1/traces}
+logging:
+  structured:
+    format:
+      console: ecs

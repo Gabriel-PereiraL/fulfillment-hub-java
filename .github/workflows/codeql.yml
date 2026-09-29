@@ -1,0 +1,20 @@
+name: codeql
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "23 4 * * 1"
+permissions:
+  contents: read
+  security-events: write
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: github/codeql-action/init@v4
+        with: { languages: java-kotlin, build-mode: manual }
+      - name: Build
+        run: docker run --rm -v "$PWD:/workspace" -w /workspace maven:3.9.16-eclipse-temurin-25@sha256:93b8a14ea2f412782e4e842651273b4d903e35cc496284f178fbbe2d67d00976 mvn -B -ntp -DskipTests package
+      - uses: github/codeql-action/analyze@v4

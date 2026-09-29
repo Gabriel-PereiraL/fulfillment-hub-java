@@ -1,0 +1,15 @@
+server:
+  port: ${PORT:8082}
+spring:
+  application:
+    name: fulfillment-hub-provider-simulator
+  jackson:
+    property-naming-strategy: SNAKE_CASE
+simulator:
+  payment-token: ${SIMULATOR_PAYMENT_TOKEN:local-payment-token}
+  delivery-client-id: ${SIMULATOR_DELIVERY_CLIENT_ID:local-client}
+  delivery-client-secret: ${SIMULATOR_DELIVERY_CLIENT_SECRET:local-secret}
+  payment-webhook-url: ${SIMULATOR_PAYMENT_WEBHOOK_URL:}
+  payment-webhook-key: ${SIMULATOR_PAYMENT_WEBHOOK_KEY:}
+  delivery-webhook-url: ${SIMULATOR_DELIVERY_WEBHOOK_URL:}
+  delivery-webhook-key: ${SIMULATOR_DELIVERY_WEBHOOK_KEY:}

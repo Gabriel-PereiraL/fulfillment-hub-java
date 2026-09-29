@@ -1,0 +1,47 @@
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+  security-events: write
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and unit tests
+        run: docker run --rm -v "$PWD:/workspace" -w /workspace maven:3.9.16-eclipse-temurin-25@sha256:93b8a14ea2f412782e4e842651273b4d903e35cc496284f178fbbe2d67d00976 mvn -B -ntp clean verify
+      - name: Start PostgreSQL and LocalStack
+        run: docker compose up -d --wait postgres localstack
+      - name: Migrate
+        run: docker run --rm --network host -v "$PWD:/workspace" -w /workspace -e DATABASE_URL=jdbc:postgresql://localhost:55432/fulfillment -e DATABASE_USER=fulfillment -e DATABASE_PASSWORD=local-development-only maven:3.9.16-eclipse-temurin-25@sha256:93b8a14ea2f412782e4e842651273b4d903e35cc496284f178fbbe2d67d00976 sh -c 'mvn -B -ntp -pl api -am package -DskipTests && java -jar api/target/api-1.0.0-SNAPSHOT.jar migrate'
+      - name: Integration tests
+        run: docker run --rm --network host -v "$PWD:/workspace" -w /workspace maven:3.9.16-eclipse-temurin-25@sha256:93b8a14ea2f412782e4e842651273b4d903e35cc496284f178fbbe2d67d00976 mvn -B -ntp -Pintegration clean verify -Dit.database.url=jdbc:postgresql://localhost:55432/fulfillment -Dit.database.user=fulfillment -Dit.database.password=local-development-only -Dit.sqs.endpoint=http://localhost:4566
+      - if: always()
+        run: docker compose logs --no-color > compose.log
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with: { name: test-evidence, path: "**/target/*-reports/**\ncompose.log" }
+  container-security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build --build-arg MODULE=api -t fulfillment-hub-java-api:ci .
+      - uses: aquasecurity/trivy-action@0.33.1
+        with:
+          image-ref: fulfillment-hub-java-api:ci
+          format: sarif
+          output: trivy.sarif
+          severity: CRITICAL,HIGH
+          exit-code: "1"
+      - if: always()
+        uses: github/codeql-action/upload-sarif@v4
+        with: { sarif_file: trivy.sarif }
+  secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: gitleaks/gitleaks-action@v2

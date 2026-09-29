@@ -1,0 +1,155 @@
+name: fulfillment-hub-java
+
+services:
+  postgres:
+    image: postgres:17.6-alpine@sha256:ef257d85f76e48da1c64832459b59fcaba1a4dac97bf5d7450c77753542eee94
+    environment:
+      POSTGRES_DB: fulfillment
+      POSTGRES_USER: fulfillment
+      POSTGRES_PASSWORD: local-development-only
+    ports:
+      - "127.0.0.1:55432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fulfillment -d fulfillment"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - fulfillment-java-postgres:/var/lib/postgresql/data
+
+  localstack:
+    image: localstack/localstack:4.8.1@sha256:8c9756bddc44625cd6e890f5e4bcc29b045eebe108b268482b848f4f832ec153
+    environment:
+      SERVICES: sqs
+      AWS_DEFAULT_REGION: us-east-1
+      EAGER_SERVICE_LOADING: "1"
+    ports:
+      - "127.0.0.1:4566:4566"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:4566/_localstack/health | grep -q '\"sqs\": \"running\"'"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+    volumes:
+      - fulfillment-java-localstack:/var/lib/localstack
+
+  otel-lgtm:
+    image: grafana/otel-lgtm:0.33.1
+    profiles: [observability]
+    ports:
+      - "127.0.0.1:3000:3000"
+      - "127.0.0.1:4317:4317"
+      - "127.0.0.1:4318:4318"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:3000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  migrate:
+    image: fulfillment-hub-java-api:local
+    build:
+      context: .
+      args: { MODULE: api }
+    command: ["migrate"]
+    environment: &database_environment
+      DATABASE_URL: jdbc:postgresql://postgres:5432/fulfillment
+      DATABASE_USER: fulfillment
+      DATABASE_PASSWORD: local-development-only
+    depends_on:
+      postgres: { condition: service_healthy }
+    restart: "no"
+
+  seed:
+    image: fulfillment-hub-java-api:local
+    build:
+      context: .
+      args: { MODULE: api }
+    command: ["seed"]
+    environment: *database_environment
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    restart: "no"
+
+  provider-simulator:
+    image: fulfillment-hub-java-provider-simulator:local
+    build:
+      context: .
+      args: { MODULE: provider-simulator }
+    environment:
+      PORT: 8082
+      SIMULATOR_PAYMENT_TOKEN: local-payment-token
+      SIMULATOR_DELIVERY_CLIENT_ID: local-client
+      SIMULATOR_DELIVERY_CLIENT_SECRET: local-secret
+      SIMULATOR_PAYMENT_WEBHOOK_URL: http://api:8080/api/v1/webhooks/payments
+      SIMULATOR_PAYMENT_WEBHOOK_KEY: local-payment-webhook-key
+      SIMULATOR_DELIVERY_WEBHOOK_URL: http://api:8080/api/v1/webhooks/deliveries
+      SIMULATOR_DELIVERY_WEBHOOK_KEY: local-delivery-webhook-key
+    ports:
+      - "127.0.0.1:8082:8082"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8082/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  api:
+    image: fulfillment-hub-java-api:local
+    build:
+      context: .
+      args: { MODULE: api }
+    environment:
+      <<: *database_environment
+      PORT: 8080
+      JWT_SIGNING_KEY: local-signing-key-at-least-thirty-two-bytes
+      PAYMENT_WEBHOOK_KEY: local-payment-webhook-key
+      DELIVERY_WEBHOOK_KEY: local-delivery-webhook-key
+      DELIVERY_PROVIDER_ENABLED: "true"
+      DELIVERY_PROVIDER_URL: http://provider-simulator:8082
+      DELIVERY_PROVIDER_CUSTOMER_ID: local-customer
+      DELIVERY_PROVIDER_CLIENT_ID: local-client
+      DELIVERY_PROVIDER_CLIENT_SECRET: local-secret
+      MESSAGING_ENABLED: "true"
+      SQS_ENDPOINT: http://localstack:4566
+      AWS_REGION: us-east-1
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://otel-lgtm:4318/v1/traces
+    ports:
+      - "127.0.0.1:8080:8080"
+    depends_on:
+      seed: { condition: service_completed_successfully }
+      provider-simulator: { condition: service_healthy }
+      localstack: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/health/ready"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  worker:
+    image: fulfillment-hub-java-worker:local
+    build:
+      context: .
+      args: { MODULE: worker }
+    environment:
+      <<: *database_environment
+      MESSAGING_ENABLED: "true"
+      SQS_ENDPOINT: http://localstack:4566
+      AWS_REGION: us-east-1
+      PAYMENT_PROVIDER_URL: http://provider-simulator:8082
+      PAYMENT_PROVIDER_TOKEN: local-payment-token
+      PAYMENT_PROVIDER_ENABLED: "true"
+      DELIVERY_PROVIDER_ENABLED: "true"
+      DELIVERY_PROVIDER_URL: http://provider-simulator:8082
+      DELIVERY_PROVIDER_CUSTOMER_ID: local-customer
+      DELIVERY_PROVIDER_CLIENT_ID: local-client
+      DELIVERY_PROVIDER_CLIENT_SECRET: local-secret
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://otel-lgtm:4318/v1/traces
+    depends_on:
+      seed: { condition: service_completed_successfully }
+      localstack: { condition: service_healthy }
+      provider-simulator: { condition: service_healthy }
+    restart: unless-stopped
+
+volumes:
+  fulfillment-java-postgres:
+  fulfillment-java-localstack:

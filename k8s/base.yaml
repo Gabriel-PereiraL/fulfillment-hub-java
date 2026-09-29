@@ -1,0 +1,118 @@
+apiVersion: v1
+kind: Namespace
+metadata: { name: fulfillment-hub }
+---
+apiVersion: v1
+kind: ConfigMap
+metadata: { name: fulfillment-config, namespace: fulfillment-hub }
+data:
+  DATABASE_URL: jdbc:postgresql://postgres:5432/fulfillment
+  DATABASE_USER: fulfillment
+  SQS_ENDPOINT: http://localstack:4566
+  AWS_REGION: us-east-1
+  MESSAGING_ENABLED: "true"
+  PAYMENT_PROVIDER_ENABLED: "true"
+  PAYMENT_PROVIDER_URL: http://provider-simulator:8082
+  PAYMENT_PROVIDER_TOKEN: local-payment-token
+  DELIVERY_PROVIDER_ENABLED: "true"
+  DELIVERY_PROVIDER_URL: http://provider-simulator:8082
+  DELIVERY_PROVIDER_CUSTOMER_ID: local-customer
+  DELIVERY_PROVIDER_CLIENT_ID: local-client
+  DELIVERY_PROVIDER_CLIENT_SECRET: local-secret
+---
+apiVersion: v1
+kind: Secret
+metadata: { name: fulfillment-secrets, namespace: fulfillment-hub }
+type: Opaque
+stringData:
+  DATABASE_PASSWORD: local-development-only
+  JWT_SIGNING_KEY: local-signing-key-at-least-thirty-two-bytes
+  PAYMENT_WEBHOOK_KEY: local-payment-webhook-key
+  DELIVERY_WEBHOOK_KEY: local-delivery-webhook-key
+---
+apiVersion: batch/v1
+kind: Job
+metadata: { name: fulfillment-migrate, namespace: fulfillment-hub }
+spec:
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: migrate
+          image: fulfillment-hub-java-api:local
+          args: [migrate]
+          envFrom: [{ configMapRef: { name: fulfillment-config } }, { secretRef: { name: fulfillment-secrets } }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: api, namespace: fulfillment-hub }
+spec:
+  replicas: 2
+  selector: { matchLabels: { app: fulfillment-api } }
+  template:
+    metadata: { labels: { app: fulfillment-api } }
+    spec:
+      securityContext: { runAsNonRoot: true, seccompProfile: { type: RuntimeDefault } }
+      containers:
+        - name: api
+          image: fulfillment-hub-java-api:local
+          ports: [{ containerPort: 8080 }]
+          envFrom: [{ configMapRef: { name: fulfillment-config } }, { secretRef: { name: fulfillment-secrets } }]
+          readinessProbe: { httpGet: { path: /health/ready, port: 8080 }, initialDelaySeconds: 10, periodSeconds: 5 }
+          livenessProbe: { httpGet: { path: /health/live, port: 8080 }, initialDelaySeconds: 20, periodSeconds: 10 }
+          resources: { requests: { cpu: 100m, memory: 256Mi }, limits: { cpu: "1", memory: 768Mi } }
+          securityContext: { allowPrivilegeEscalation: false, capabilities: { drop: [ALL] }, readOnlyRootFilesystem: true }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: api, namespace: fulfillment-hub }
+spec: { selector: { app: fulfillment-api }, ports: [{ port: 8080, targetPort: 8080 }] }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: worker, namespace: fulfillment-hub }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: fulfillment-worker } }
+  template:
+    metadata: { labels: { app: fulfillment-worker } }
+    spec:
+      securityContext: { runAsNonRoot: true, seccompProfile: { type: RuntimeDefault } }
+      containers:
+        - name: worker
+          image: fulfillment-hub-java-worker:local
+          envFrom: [{ configMapRef: { name: fulfillment-config } }, { secretRef: { name: fulfillment-secrets } }]
+          resources: { requests: { cpu: 100m, memory: 256Mi }, limits: { cpu: "1", memory: 768Mi } }
+          securityContext: { allowPrivilegeEscalation: false, capabilities: { drop: [ALL] }, readOnlyRootFilesystem: true }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: provider-simulator, namespace: fulfillment-hub }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: provider-simulator } }
+  template:
+    metadata: { labels: { app: provider-simulator } }
+    spec:
+      securityContext: { runAsNonRoot: true, seccompProfile: { type: RuntimeDefault } }
+      containers:
+        - name: simulator
+          image: fulfillment-hub-java-provider-simulator:local
+          env:
+            - { name: PORT, value: "8082" }
+            - { name: SIMULATOR_PAYMENT_TOKEN, value: local-payment-token }
+            - { name: SIMULATOR_DELIVERY_CLIENT_ID, value: local-client }
+            - { name: SIMULATOR_DELIVERY_CLIENT_SECRET, value: local-secret }
+            - { name: SIMULATOR_PAYMENT_WEBHOOK_URL, value: "http://api:8080/api/v1/webhooks/payments" }
+            - { name: SIMULATOR_PAYMENT_WEBHOOK_KEY, value: local-payment-webhook-key }
+            - { name: SIMULATOR_DELIVERY_WEBHOOK_URL, value: "http://api:8080/api/v1/webhooks/deliveries" }
+            - { name: SIMULATOR_DELIVERY_WEBHOOK_KEY, value: local-delivery-webhook-key }
+          ports: [{ containerPort: 8082 }]
+          readinessProbe: { httpGet: { path: /health, port: 8082 }, initialDelaySeconds: 5 }
+          resources: { requests: { cpu: 50m, memory: 128Mi }, limits: { cpu: "1", memory: 512Mi } }
+          securityContext: { allowPrivilegeEscalation: false, capabilities: { drop: [ALL] }, readOnlyRootFilesystem: true }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: provider-simulator, namespace: fulfillment-hub }
+spec: { selector: { app: provider-simulator }, ports: [{ port: 8082, targetPort: 8082 }] }

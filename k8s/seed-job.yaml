@@ -1,0 +1,12 @@
+apiVersion: batch/v1
+kind: Job
+metadata: { name: fulfillment-seed, namespace: fulfillment-hub }
+spec:
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: seed
+          image: fulfillment-hub-java-api:local
+          args: [seed]
+          envFrom: [{ configMapRef: { name: fulfillment-config } }, { secretRef: { name: fulfillment-secrets } }]
