@@ -16,7 +16,7 @@ This is the evidence ledger for the F01–F15 remediation. A finding is marked f
 | F10 — missing event handlers | Confirmed | Known event types without a handler are silently marked processed. | Pending. |
 | F11 — observability | Confirmed | Reconciliation failures are swallowed and workflow/backlog evidence is incomplete. | Pending. |
 | F12 — Kubernetes operations | Under review | Manifests and restart/persistence behavior still require execution evidence. | Pending. |
-| F13 | Not verified | The supplied task text does not define F13 and the original audit artifact was not present in the attachment. | Pending source evidence; no behavior will be invented. |
+| F13 — fixed credentials in Sistema-portaria | Confirmed by audit, current HEAD verification pending | The audit observed database credentials in `db.py` and fixed login credentials in `logic.py`; their real-world validity was not verified. | Inspect current repository, remove from HEAD, replace with safe configuration/authentication, scan without reproducing values, and require rotation if potentially real. History rewrite requires a separate explicit decision. |
 | F14 — supply chain | Partially fixed | Existing CI pins/scans require a complete re-audit across images and dependencies. | Tomcat/Jackson vulnerability upgrades and Trivy High/Critical gate already exist. |
 | F15 — leases/visibility | Confirmed | Outbox lease completion has no ownership token; SQS visibility has no renewal for long work. | Pending. |
 
