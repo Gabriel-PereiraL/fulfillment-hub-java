@@ -8,7 +8,7 @@
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <junit.version>5.14.4</junit.version>
     <spring-boot.version>4.1.1</spring-boot.version>
-    <aws-sdk.version>2.31.54</aws-sdk.version>
+    <aws-sdk.version>2.55.6</aws-sdk.version>
     <resilience4j.version>2.4.0</resilience4j.version>
   </properties>
   <modules><module>domain</module><module>runtime</module><module>api</module><module>worker</module><module>provider-simulator</module></modules>
