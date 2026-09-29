@@ -1,32 +1,26 @@
-# Checkpoint de continuidade — FulfillmentHub Java
+# Checkpoint de continuidade — auditoria FulfillmentHub Java
 
-Atualizado em 29/09/2026 às 17:14 (America/Sao_Paulo).
+Atualizado em 29/09/2026 (America/Sao_Paulo).
 
-## Estado atual
+## Objetivo ativo
 
-A reimplementação está funcional, documentada, validada e publicada em `https://github.com/Gabriel-PereiraL/fulfillment-hub-java`.
+Corrigir e comprovar F01–F15, executar regressão total e somente então reposicionar o GitHub como portfólio de Backend Engineering em .NET e Java/Spring Boot.
 
 Workspace: `C:\Users\Gabriel\Documents\Codex\2026-09-28\files-pasted-by-the-user-objetivo\outputs\fulfillment-hub-java`.
 
 Fonte .NET preservada sem alterações: `C:\Users\Gabriel\Documents\Codex\2026-09-24\segui-sua-abordagem-deixei-de-lado\work\fulfillment-hub`, commit `dd2af04e71e624f0177bb500ee99b048d29e3a20`.
 
-## Evidências verdes
+## Estado exato
 
-- Build Java 25/Spring Boot 4.1.1/Maven 3.9.16: PASS.
-- 44 testes de domínio + 3 de resiliência + 9 integrados = 56 PASS, zero falhas/ignorados.
-- PostgreSQL 17.6 e LocalStack reais; quatro migrations e seed idempotente.
-- Compose final saudável com imagens non-root baseadas em JRE 25 fixada por digest.
-- E2E final PASS: order `92a740e1-a151-4ec4-85b8-bb7bbcaf98f4`, Created→AwaitingPayment→Paid→DeliveryRequested→Delivered; replay idempotente e mismatch 422.
-- Fluxo separado de cancelamento e refund foi validado anteriormente.
-- Prometheus autenticado respondeu 200; perfil opcional Grafana LGTM configurado.
-- Kubeconform: 14 recursos válidos, nenhum erro.
-- Gitleaks: nenhuma fuga.
-- Trivy foi iniciado, mas o download local do banco Java de 929 MiB foi interrompido pela estimativa de rede >15 min; CI tem gate Trivy com exit-code 1 para High/Critical.
+- O relatório original da auditoria não veio entre os anexos; a solicitação detalhada e os achados confirmados no código são registrados em `docs/AUDIT_REMEDIATION_2026-09-29.md`.
+- F01 foi confirmado: `OrderService.cancel` chamava o provedor de entrega antes da autorização por recurso.
+- F01 corrigido localmente: a chamada externa direta foi removida do caminho HTTP. O cancelamento autorizado persiste `OrderCancelled`; o consumidor solicita refund e cancelamento da entrega.
+- `customerCannotCancelAnotherCustomersOrderOrScheduleProviderEffects` prova que estado, estoque e outbox permanecem inalterados para pedido alheio.
+- Regressão da etapa: 44 testes de domínio, 3 de resiliência e 10 integrados passaram; zero falhas.
+- Próximo passo imediato: commit `fix(authz)` e F02 pagamento retomável, com cenário “provider executou e resposta foi perdida”.
 
-## Retomada exata
+## Evidência anterior preservada
 
-1. Conferir a primeira execução dos workflows `ci` e `codeql` no GitHub.
-2. Corrigir e enviar qualquer achado High/Critical caso o gate Trivy encontre algum.
-3. O repositório foi criado privado. Alterar visibilidade somente com instrução explícita do proprietário.
+Antes desta auditoria: 56 testes verdes, Compose/E2E entregue, Kubeconform 14/14, Gitleaks limpo, CodeQL verde e Trivy sem High/Critical após upgrades de Tomcat/Jackson. Essas evidências serão repetidas ao final; não são tratadas como prova das novas correções.
 
-Não registrar tokens ou credenciais neste arquivo. Não alterar o checkout .NET.
+Nunca registrar tokens ou credenciais neste arquivo. Não reescrever histórico Git.

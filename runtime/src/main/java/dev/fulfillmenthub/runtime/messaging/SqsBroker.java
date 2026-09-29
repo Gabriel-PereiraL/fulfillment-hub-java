@@ -45,7 +45,11 @@ public class SqsBroker implements OutboxHandler {
             var marker="\"orderId\":\"";var start=message.body().indexOf(marker);if(start<0)throw new IllegalArgumentException("Missing orderId");
             start+=marker.length();var end=message.body().indexOf('"',start);var orderId=java.util.UUID.fromString(message.body().substring(start,end));var eventType=message.messageAttributes().get("eventType").stringValue();
             if("OrderPlaced".equals(eventType))payments.createForOrder(orderId);else if("OrderPaid".equals(eventType)){var delivery=deliveries.getIfAvailable();if(delivery==null)throw new IllegalStateException("Delivery provider is disabled");delivery.request(orderId);}
-            else if("OrderCancelled".equals(eventType)||"PaymentPaid".equals(eventType)){var gateway=paymentGateway.getIfAvailable();if(gateway==null)throw new IllegalStateException("Payment provider is disabled");gateway.refundForOrder(orderId);}
+            else if("OrderCancelled".equals(eventType)){
+                var gateway=paymentGateway.getIfAvailable();if(gateway==null)throw new IllegalStateException("Payment provider is disabled");gateway.refundForOrder(orderId);
+                var delivery=deliveries.getIfAvailable();if(delivery==null)throw new IllegalStateException("Delivery provider is disabled");delivery.cancelForOrder(orderId);
+            }
+            else if("PaymentPaid".equals(eventType)){var gateway=paymentGateway.getIfAvailable();if(gateway==null)throw new IllegalStateException("Payment provider is disabled");gateway.refundForOrder(orderId);}
             else throw new IllegalArgumentException("Unknown event type: "+eventType);
             em.persist(ProcessedMessageRow.create(CONSUMER,messageId,clock.instant()));});}
 }

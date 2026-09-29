@@ -12,8 +12,6 @@ import java.util.UUID;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
-import org.springframework.beans.factory.ObjectProvider;
-import dev.fulfillmenthub.runtime.delivery.DeliveryWorkflowService;
 
 @Service
 public class OrderService {
@@ -27,8 +25,8 @@ public class OrderService {
  public record Summary(UUID id,long number,String status,MoneyView total,int itemCount,Instant createdAt) {}
  public record Page(List<Summary> items,String nextCursor) {}
 
- private final EntityManager em; private final TransactionTemplate tx; private final Clock clock;private final ObjectProvider<DeliveryWorkflowService> deliveries;
- public OrderService(EntityManager em,TransactionTemplate tx,Clock clock,ObjectProvider<DeliveryWorkflowService> deliveries){this.em=em;this.tx=tx;this.clock=clock;this.deliveries=deliveries;}
+ private final EntityManager em; private final TransactionTemplate tx; private final Clock clock;
+ public OrderService(EntityManager em,TransactionTemplate tx,Clock clock){this.em=em;this.tx=tx;this.clock=clock;}
 
  public View get(UUID id,UUID customerId,boolean privileged){return tx.execute(s->{var row=em.find(OrderRow.class,id);
   return row==null||!visible(row,customerId,privileged)?null:view(row);});}
@@ -45,7 +43,6 @@ public class OrderService {
    return new Page(page,more?encode(page.getLast().number()):null);});}
 
  public View cancel(UUID id,UUID customerId,UUID actor,boolean privileged,String note){
-  var requiresRemote=tx.execute(s->{var row=em.find(OrderRow.class,id);return row!=null&&"DeliveryRequested".equals(row.status);});var provider=deliveries.getIfAvailable();if(Boolean.TRUE.equals(requiresRemote)&&provider!=null)provider.cancelForOrder(id);
   for(int attempt=1;attempt<=2;attempt++)try{return tx.execute(s->cancelOnce(id,customerId,actor,privileged,note));}
   catch(OptimisticLockingFailureException failure){em.clear();if(attempt==2)throw failure;}
   throw new IllegalStateException("Unreachable cancellation retry state.");

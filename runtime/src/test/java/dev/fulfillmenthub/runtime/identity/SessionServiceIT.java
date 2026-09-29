@@ -218,6 +218,20 @@ class SessionServiceIT {
     }
 
     @Test
+    void customerCannotCancelAnotherCustomersOrderOrScheduleProviderEffects() {
+        var productId=seedProduct(1);var owner=UUID.randomUUID();
+        var placed=orders.place(owner,address(),List.of(new OrderPlacementService.Line(productId,1)),Money.brl("15"),"owned-order");
+        var outboxBefore=scalar("select count(*) from outbox_messages");
+
+        assertNull(orderQueries.cancel(placed.id(),UUID.randomUUID(),UUID.randomUUID(),false,null));
+
+        assertEquals("Created",orderQueries.get(placed.id(),owner,false).status());
+        assertEquals(0,scalar("select stock_quantity from products where id='"+productId+"'"));
+        assertEquals(outboxBefore,scalar("select count(*) from outbox_messages"));
+        assertEquals(0,scalar("select count(*) from outbox_messages where aggregate_id='"+placed.id()+"' and type='OrderCancelled'"));
+    }
+
+    @Test
     void outboxAcknowledgesKnownUnhandledEventsAndParksPoisonAfterFiveAttempts() {
         var known=OutboxRow.pending("OrderPaid",UUID.randomUUID(),Instant.now());
         var poison=OutboxRow.pending("UnrecognizedPoison",UUID.randomUUID(),Instant.now());
