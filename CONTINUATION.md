@@ -4,7 +4,7 @@ Atualizado em 29/09/2026 às 17:14 (America/Sao_Paulo).
 
 ## Estado atual
 
-A reimplementação local está funcional, documentada e validada. Falta somente publicar no GitHub, pois `gh auth status` informa que não existe sessão autenticada neste computador. O pedido mais recente do usuário autoriza criar o repositório e fazer push assim que a autenticação existir.
+A reimplementação está funcional, documentada, validada e publicada em `https://github.com/Gabriel-PereiraL/fulfillment-hub-java`.
 
 Workspace: `C:\Users\Gabriel\Documents\Codex\2026-09-28\files-pasted-by-the-user-objetivo\outputs\fulfillment-hub-java`.
 
@@ -25,9 +25,8 @@ Fonte .NET preservada sem alterações: `C:\Users\Gabriel\Documents\Codex\2026-0
 
 ## Retomada exata
 
-1. Confirmar `gh auth status`.
-2. Se autenticado, dentro do workspace executar `gh repo create fulfillment-hub-java --source . --private --description "Reimplementação Java/Spring Boot do FulfillmentHub com outbox, SQS, pagamentos, entregas e observabilidade" --push` (se o nome já existir, obter a URL correta e adicionar como `origin`).
-3. Anexar/registrar a URL e conferir o workflow remoto. Se o usuário preferir público, alterar visibilidade somente com instrução explícita.
-4. O scan Trivy remoto é o único gate que só poderá ter resultado depois do push; corrigir achados High/Critical caso o workflow encontre algum.
+1. Conferir a primeira execução dos workflows `ci` e `codeql` no GitHub.
+2. Corrigir e enviar qualquer achado High/Critical caso o gate Trivy encontre algum.
+3. O repositório foi criado privado. Alterar visibilidade somente com instrução explícita do proprietário.
 
 Não registrar tokens ou credenciais neste arquivo. Não alterar o checkout .NET.
