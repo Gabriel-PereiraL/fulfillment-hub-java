@@ -10,7 +10,7 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Build and unit tests
         run: docker run --rm -v "$PWD:/workspace" -w /workspace maven:3.9.16-eclipse-temurin-25@sha256:93b8a14ea2f412782e4e842651273b4d903e35cc496284f178fbbe2d67d00976 mvn -B -ntp clean verify
       - name: Start PostgreSQL and LocalStack
@@ -27,9 +27,9 @@ jobs:
   container-security:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - run: docker build --build-arg MODULE=api -t fulfillment-hub-java-api:ci .
-      - uses: aquasecurity/trivy-action@0.33.1
+      - uses: aquasecurity/trivy-action@0.36.0
         with:
           image-ref: fulfillment-hub-java-api:ci
           format: sarif
@@ -42,6 +42,6 @@ jobs:
   secrets:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with: { fetch-depth: 0 }
       - uses: gitleaks/gitleaks-action@v2
