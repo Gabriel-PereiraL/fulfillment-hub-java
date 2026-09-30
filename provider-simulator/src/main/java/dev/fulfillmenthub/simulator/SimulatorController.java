@@ -28,6 +28,7 @@ public class SimulatorController {
     record PaymentView(String id, String status, Amount amount, String failureCode, Instant updatedAt) {}
     record RefundRequest(BigDecimal amount) {}
     record RefundView(String id, String paymentId, String status, BigDecimal amount, Instant createdAt) {}
+    record RefundRecord(String paymentId, BigDecimal amount, RefundView view) {}
     record TokenView(String accessToken, String tokenType, long expiresIn, String scope) {}
     record QuoteRequest(Party pickup, Party dropoff, Amount manifestTotalValue) {}
     record Party(String name, Address address, String phone) {}
@@ -38,6 +39,7 @@ public class SimulatorController {
 
     private final Map<String, PaymentView> payments = new ConcurrentHashMap<>();
     private final Map<String, String> paymentKeys = new ConcurrentHashMap<>();
+    private final Map<String, RefundRecord> refundKeys = new ConcurrentHashMap<>();
     private final Map<String, QuoteView> quotes = new ConcurrentHashMap<>();
     private final Map<String, DeliveryView> deliveries = new ConcurrentHashMap<>();
     private final Map<String, String> deliveryKeys = new ConcurrentHashMap<>();
@@ -91,13 +93,20 @@ public class SimulatorController {
 
     @PostMapping("/payments/v1/payments/{id}/refunds")
     ResponseEntity<RefundView> refund(@RequestHeader(name="Authorization",required=false) String authorization,@PathVariable("id") String id,
+                                      @RequestHeader(name="Idempotency-Key") String key,
                                       @RequestBody(required=false) RefundRequest request) {
         if (!authorized(authorization, paymentToken)) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         var payment = payments.get(id); if (payment == null) return ResponseEntity.notFound().build();
         if (!("paid".equals(payment.status()) || "refunded".equals(payment.status()))) return ResponseEntity.status(422).build();
         var amount = request == null || request.amount() == null ? payment.amount().amount() : request.amount();
-        var now = Instant.now(); payments.put(id, new PaymentView(id,"refunded",payment.amount(),null,now));
-        return ResponseEntity.ok(new RefundView("ref_"+compactId(),id,"succeeded",amount,now));
+        if(amount.signum()<=0||amount.compareTo(payment.amount().amount())>0)return ResponseEntity.status(422).build();
+        var existing=refundKeys.get(key);if(existing!=null)return existing.paymentId().equals(id)&&existing.amount().compareTo(amount)==0
+                ?ResponseEntity.ok(existing.view()):ResponseEntity.status(HttpStatus.CONFLICT).build();
+        var now=Instant.now();var candidate=new RefundRecord(id,amount,new RefundView("ref_"+compactId(),id,"succeeded",amount,now));
+        existing=refundKeys.putIfAbsent(key,candidate);var selected=existing==null?candidate:existing;
+        if(!selected.paymentId().equals(id)||selected.amount().compareTo(amount)!=0)return ResponseEntity.status(HttpStatus.CONFLICT).build();
+        payments.computeIfPresent(id,(ignored,current)->new PaymentView(id,"refunded",current.amount(),null,now));
+        return ResponseEntity.ok(selected.view());
     }
 
     @PostMapping(value="/delivery/oauth/token",consumes="application/x-www-form-urlencoded")

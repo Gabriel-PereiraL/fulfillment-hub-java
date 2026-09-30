@@ -12,6 +12,7 @@ public final class ProviderStatePolicy {
     public static Decision payment(String current,String reported,Instant lastEvent,Instant occurredAt){
         if(lastEvent!=null&&occurredAt.isBefore(lastEvent))return Decision.Stale;if(current.equals(reported))return Decision.Duplicate;
         if("Refunded".equals(current)||"Failed".equals(current)||"Cancelled".equals(current))return Decision.Conflict;
+        if("Refunded".equals(reported))return "Paid".equals(current)?Decision.Applied:Decision.Conflict;
         if("Paid".equals(current))return "Refunded".equals(reported)?Decision.Applied:Decision.Conflict;
         return PAYMENT.getOrDefault(reported,-1)>=PAYMENT.getOrDefault(current,0)?Decision.Applied:Decision.Conflict;
     }

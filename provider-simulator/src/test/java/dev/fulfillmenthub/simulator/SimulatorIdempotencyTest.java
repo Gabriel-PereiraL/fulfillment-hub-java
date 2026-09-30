@@ -37,4 +37,17 @@ class SimulatorIdempotencyTest {
             assertEquals(1, deliveryIds.size());
         }
     }
+
+    @Test
+    void refundReplaysByKeyAndRejectsInvalidAmounts() {
+        var simulator = new SimulatorController("payment-token", "client", "secret", "", "", "", "", JsonMapper.builder().build());
+        var payment = simulator.createPayment("Bearer payment-token", "paid-payment",
+                new SimulatorController.PaymentRequest(new SimulatorController.Amount(new BigDecimal("10.98"), "BRL"), "order", "customer")).getBody();
+        var first = simulator.refund("Bearer payment-token", payment.id(), "refund-key", new SimulatorController.RefundRequest(new BigDecimal("10.98")));
+        var replay = simulator.refund("Bearer payment-token", payment.id(), "refund-key", new SimulatorController.RefundRequest(new BigDecimal("10.98")));
+        assertEquals(first.getBody().id(), replay.getBody().id());
+        assertEquals(422, simulator.refund("Bearer payment-token", payment.id(), "negative", new SimulatorController.RefundRequest(BigDecimal.ONE.negate())).getStatusCode().value());
+        assertEquals(422, simulator.refund("Bearer payment-token", payment.id(), "excess", new SimulatorController.RefundRequest(new BigDecimal("11.00"))).getStatusCode().value());
+        assertEquals(409, simulator.refund("Bearer payment-token", payment.id(), "refund-key", new SimulatorController.RefundRequest(BigDecimal.ONE)).getStatusCode().value());
+    }
 }

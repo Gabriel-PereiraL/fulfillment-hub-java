@@ -28,7 +28,10 @@ public class RequestFilter extends OncePerRequestFilter {
         if (correlation == null || !correlation.matches("[A-Za-z0-9_-]{1,64}")) correlation = UUID.randomUUID().toString();
         response.setHeader("X-Correlation-Id", correlation);
         var previousCorrelation = MDC.get("correlation_id");
+        var previousTraceParent = MDC.get("traceparent");
         MDC.put("correlation_id", correlation);
+        var traceParent=request.getHeader("traceparent");
+        if(traceParent!=null&&traceParent.matches("00-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}"))MDC.put("traceparent",traceParent);else MDC.remove("traceparent");
         try {
             var path = request.getRequestURI();
             int limit = path.equals("/api/v1/auth/login") || path.equals("/api/v1/auth/change-password") ? 5
@@ -59,6 +62,8 @@ public class RequestFilter extends OncePerRequestFilter {
         } finally {
             if (previousCorrelation == null) MDC.remove("correlation_id");
             else MDC.put("correlation_id", previousCorrelation);
+            if (previousTraceParent == null) MDC.remove("traceparent");
+            else MDC.put("traceparent", previousTraceParent);
         }
     }
 }

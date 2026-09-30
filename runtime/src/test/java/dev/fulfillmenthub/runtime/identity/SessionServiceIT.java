@@ -309,8 +309,9 @@ class SessionServiceIT {
     @Test
     void twoWorkersCannotClaimTheSameWebhookAndExpiredLeaseIsRecoverable() throws Exception {
         var body="{\"id\":\"evt-claim\",\"type\":\"informational.event\"}".getBytes(StandardCharsets.UTF_8);var receipt=webhooks.store("unknown",webhooks.identify(body),body,"corr-claim");var gate=new CountDownLatch(1);
-        try(var executor=Executors.newFixedThreadPool(2)){var task=(java.util.concurrent.Callable<Boolean>)()->{gate.await();return webhookProcessor.processOne(receipt.id());};var first=executor.submit(task);var second=executor.submit(task);gate.countDown();assertNotEquals(first.get(),second.get());}
+        try(var executor=Executors.newFixedThreadPool(2)){var task=(java.util.concurrent.Callable<Boolean>)()->{gate.await();return webhookProcessor.processOne(receipt.id());};var first=executor.submit(task);var second=executor.submit(task);gate.countDown();assertTrue(first.get()||second.get());}
         assertEquals(1,scalar("select attempts from webhook_events where id='"+receipt.id()+"'"));
+        assertTrue(webhookProcessor.processOne(receipt.id()),"terminal redelivery must be acknowledged");
         tx.executeWithoutResult(status->em.createNativeQuery("update webhook_events set status='Processing',owner=:owner,locked_until=now()-interval '1 second',next_attempt_at=now() where id=:id").setParameter("owner",UUID.randomUUID()).setParameter("id",receipt.id()).executeUpdate());
         assertTrue(webhookProcessor.processOne(receipt.id()));assertEquals(2,scalar("select attempts from webhook_events where id='"+receipt.id()+"'"));
     }

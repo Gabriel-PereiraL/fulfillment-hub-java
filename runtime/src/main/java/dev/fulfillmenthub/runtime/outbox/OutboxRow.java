@@ -13,5 +13,6 @@ public class OutboxRow {
  public static OutboxRow pending(UUID aggregateId, Instant now) { return pending("OrderPlaced",aggregateId,now); }
  public static OutboxRow pending(String type,UUID aggregateId, Instant now) { var r=new OutboxRow(); r.id=UUID.randomUUID();
   r.type=type; r.payload="{\"orderId\":\""+aggregateId+"\"}"; r.aggregateId=aggregateId;
-  r.occurredAt=now; r.createdAt=now; r.status="Pending"; r.nextAttemptAt=now; return r; }
+  r.occurredAt=now; r.createdAt=now; r.status="Pending"; r.nextAttemptAt=now;
+  r.correlationId=org.slf4j.MDC.get("correlation_id"); r.traceParent=org.slf4j.MDC.get("traceparent"); return r; }
 }
