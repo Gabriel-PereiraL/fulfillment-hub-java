@@ -1,6 +1,17 @@
 # FulfillmentHub Java
 
-Implementação Java/Spring Boot do mesmo sistema de fulfillment existente em .NET. O projeto preserva contratos, regras de negócio e garantias operacionais, mas usa padrões próprios do ecossistema Java. Ele não é uma tradução automática linha a linha.
+Java/Spring Boot implementation of a transactional fulfillment system focused on consistency, messaging, resilience, and failure recovery. It addresses the same business problem as the .NET implementation while using idiomatic choices for the Java ecosystem.
+
+## Failure guarantees
+
+- Order, stock reservation, idempotency association, and outbox messages commit atomically.
+- Lost payment or delivery responses are resumed with the original provider idempotency key.
+- Provider snapshots pass through one transition policy, preventing stale transitions such as `Paid → Pending`.
+- SQS consumers and webhook inbox records use owner-fenced claims and recover expired leases.
+- Outbox delivery is at-least-once. The project does not claim remote exactly-once processing.
+- Permanent provider rejection becomes an explicit terminal state and triggers durable compensation.
+
+PostgreSQL integration tests cover unauthorized cancellation, lost provider responses, duplicate delivery, out-of-order state, concurrent webhook claims, and the HTTP idempotency crash window.
 
 ## Arquitetura
 
@@ -83,9 +94,9 @@ Pedidos exigem `Idempotency-Key`. O estoque, o pedido e a outbox são gravados n
 - Imagens executam como usuário não-root; manifests removem capabilities e bloqueiam privilege escalation.
 - CI inclui Gitleaks e Trivy.
 
-## Observabilidade
+## Observability
 
-Logs estruturados carregam correlation ID. Actuator publica health e métricas Prometheus. Micrometer/OpenTelemetry exportam traces via OTLP quando um collector é configurado. A outbox preserva correlation e `traceparent` no modelo persistente.
+Structured logs carry a correlation ID. Actuator publishes health and Prometheus metrics. Micrometer/OpenTelemetry exports traces through OTLP when a collector is configured. The outbox persists correlation and `traceparent`; complete cross-process trace continuation remains a documented limitation.
 
 Para abrir localmente Grafana, Prometheus, Tempo e o collector OTLP:
 
@@ -106,4 +117,4 @@ O Grafana fica em `http://127.0.0.1:3000`. O endpoint Prometheus da API exige au
 
 Migrations e seed são etapas explícitas e idempotentes. A API só inicia depois dessas etapas no Compose. O worker provisiona filas e DLQs locais, processa outbox/webhooks e executa reconciliação. O endpoint de readiness depende do PostgreSQL, sem transformar indisponibilidade transitória do broker em remoção de todas as instâncias da API.
 
-O código-fonte .NET continua sendo a referência funcional. Diferenças conscientes e sua justificativa ficam registradas na matriz e nos ADRs.
+AWS services are simulated locally with LocalStack. The repository demonstrates deployment design and operational fundamentals; it does not claim a production AWS deployment. Deliberate differences from the .NET implementation are recorded in the parity matrix and ADRs.
