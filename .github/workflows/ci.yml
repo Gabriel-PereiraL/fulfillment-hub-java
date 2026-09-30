@@ -3,15 +3,13 @@ on:
   push:
     branches: [main]
   pull_request:
-permissions:
-  actions: read
-  contents: read
-  security-events: write
+permissions: { contents: read }
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
       - name: Build and unit tests
         run: docker run --rm -v "$PWD:/workspace" -w /workspace maven:3.9.16-eclipse-temurin-25@sha256:93b8a14ea2f412782e4e842651273b4d903e35cc496284f178fbbe2d67d00976 mvn -B -ntp clean verify
       - name: Start PostgreSQL and LocalStack
@@ -20,30 +18,36 @@ jobs:
         run: docker run --rm --network host -v "$PWD:/workspace" -w /workspace -e DATABASE_URL=jdbc:postgresql://localhost:55432/fulfillment -e DATABASE_USER=fulfillment -e DATABASE_PASSWORD=local-development-only maven:3.9.16-eclipse-temurin-25@sha256:93b8a14ea2f412782e4e842651273b4d903e35cc496284f178fbbe2d67d00976 sh -c 'mvn -B -ntp -pl api -am package -DskipTests && java -jar api/target/api-1.0.0-SNAPSHOT.jar migrate'
       - name: Integration tests
         run: docker run --rm --network host -v "$PWD:/workspace" -w /workspace maven:3.9.16-eclipse-temurin-25@sha256:93b8a14ea2f412782e4e842651273b4d903e35cc496284f178fbbe2d67d00976 mvn -B -ntp -Pintegration clean verify -Dit.database.url=jdbc:postgresql://localhost:55432/fulfillment -Dit.database.user=fulfillment -Dit.database.password=local-development-only -Dit.sqs.endpoint=http://localhost:4566
+      - name: End-to-end workflow
+        run: pwsh ./scripts/e2e.ps1
       - if: always()
         run: docker compose logs --no-color > compose.log
       - if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with: { name: test-evidence, path: "**/target/*-reports/**\ncompose.log" }
   container-security:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      matrix: { module: [api, worker, provider-simulator] }
     steps:
-      - uses: actions/checkout@v5
-      - run: docker build --build-arg MODULE=api -t fulfillment-hub-java-api:ci .
-      - uses: aquasecurity/trivy-action@v0.36.0
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - run: docker build --build-arg MODULE=${{ matrix.module }} -t fulfillment-hub-java-${{ matrix.module }}:ci .
+      - uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8
         with:
-          image-ref: fulfillment-hub-java-api:ci
+          image-ref: fulfillment-hub-java-${{ matrix.module }}:ci
           format: sarif
-          output: trivy.sarif
+          output: trivy-${{ matrix.module }}.sarif
           severity: CRITICAL,HIGH
           limit-severities-for-sarif: true
           exit-code: "1"
       - if: always()
-        uses: actions/upload-artifact@v4
-        with: { name: trivy-sarif, path: trivy.sarif, retention-days: 14 }
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with: { name: trivy-${{ matrix.module }}-sarif, path: trivy-${{ matrix.module }}.sarif, retention-days: 14 }
   secrets:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with: { fetch-depth: 0 }
-      - uses: gitleaks/gitleaks-action@v2
+      - uses: gitleaks/gitleaks-action@dcedce43c6f43de0b836d1fe38946645c9c638dc

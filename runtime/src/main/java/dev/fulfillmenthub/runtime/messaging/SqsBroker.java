@@ -36,8 +36,8 @@ public class SqsBroker implements OutboxHandler {
     @Override public void handle(OutboxRow message){sqs.sendMessage(b->b.queueUrl(domainUrl).messageBody(message.payload).messageAttributes(Map.of(
             "eventType",MessageAttributeValue.builder().dataType("String").stringValue(message.type).build(),
             "messageId",MessageAttributeValue.builder().dataType("String").stringValue(message.id.toString()).build())));}
-    public int consume(){var response=sqs.receiveMessage(b->b.queueUrl(domainUrl).maxNumberOfMessages(10).waitTimeSeconds(1).messageAttributeNames("All").messageSystemAttributeNames(MessageSystemAttributeName.APPROXIMATE_RECEIVE_COUNT));
-        for(var message:response.messages())try{process(message);sqs.deleteMessage(b->b.queueUrl(domainUrl).receiptHandle(message.receiptHandle()));}
+    public int consume(){var response=sqs.receiveMessage(b->b.queueUrl(domainUrl).maxNumberOfMessages(1).waitTimeSeconds(1).messageAttributeNames("All").messageSystemAttributeNames(MessageSystemAttributeName.APPROXIMATE_RECEIVE_COUNT));
+        for(var message:response.messages())try{sqs.changeMessageVisibility(b->b.queueUrl(domainUrl).receiptHandle(message.receiptHandle()).visibilityTimeout(300));process(message);sqs.deleteMessage(b->b.queueUrl(domainUrl).receiptHandle(message.receiptHandle()));}
         catch(RuntimeException failure){int receives=Integer.parseInt(message.attributes().getOrDefault(MessageSystemAttributeName.APPROXIMATE_RECEIVE_COUNT,"1"));long cap=Math.min(300,5L<<Math.min(Math.max(0,receives-1),6));int delay=(int)Math.max(1,Math.round(cap*(0.5+java.util.concurrent.ThreadLocalRandom.current().nextDouble()*0.5)));
             sqs.changeMessageVisibility(b->b.queueUrl(domainUrl).receiptHandle(message.receiptHandle()).visibilityTimeout(delay));}return response.messages().size();}
     private void process(Message message){var messageId=message.messageAttributes().get("messageId").stringValue();var eventType=message.messageAttributes().get("eventType").stringValue();var owner=claim(CONSUMER+":"+eventType,messageId);if(owner==null)return;

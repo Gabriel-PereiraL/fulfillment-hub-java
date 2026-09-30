@@ -52,12 +52,15 @@ spec:
   template:
     metadata: { labels: { app: fulfillment-api } }
     spec:
+      terminationGracePeriodSeconds: 60
       securityContext: { runAsNonRoot: true, seccompProfile: { type: RuntimeDefault } }
+      volumes: [{ name: tmp, emptyDir: {} }]
       containers:
         - name: api
           image: fulfillment-hub-java-api:local
           ports: [{ containerPort: 8080 }]
           envFrom: [{ configMapRef: { name: fulfillment-config } }, { secretRef: { name: fulfillment-secrets } }]
+          volumeMounts: [{ name: tmp, mountPath: /tmp }]
           readinessProbe: { httpGet: { path: /health/ready, port: 8080 }, initialDelaySeconds: 10, periodSeconds: 5 }
           livenessProbe: { httpGet: { path: /health/live, port: 8080 }, initialDelaySeconds: 20, periodSeconds: 10 }
           resources: { requests: { cpu: 100m, memory: 256Mi }, limits: { cpu: "1", memory: 768Mi } }
@@ -77,11 +80,16 @@ spec:
   template:
     metadata: { labels: { app: fulfillment-worker } }
     spec:
+      terminationGracePeriodSeconds: 60
       securityContext: { runAsNonRoot: true, seccompProfile: { type: RuntimeDefault } }
+      volumes: [{ name: tmp, emptyDir: {} }]
       containers:
         - name: worker
           image: fulfillment-hub-java-worker:local
           envFrom: [{ configMapRef: { name: fulfillment-config } }, { secretRef: { name: fulfillment-secrets } }]
+          volumeMounts: [{ name: tmp, mountPath: /tmp }]
+          readinessProbe: { exec: { command: [sh, -c, "test -f /tmp/worker-ready"] }, initialDelaySeconds: 10, periodSeconds: 5 }
+          livenessProbe: { exec: { command: [sh, -c, "test -f /tmp/worker-ready && test $(($(date +%s)-$(date -r /tmp/worker-ready +%s))) -lt 120"] }, initialDelaySeconds: 30, periodSeconds: 15 }
           resources: { requests: { cpu: 100m, memory: 256Mi }, limits: { cpu: "1", memory: 768Mi } }
           securityContext: { allowPrivilegeEscalation: false, capabilities: { drop: [ALL] }, readOnlyRootFilesystem: true }
 ---

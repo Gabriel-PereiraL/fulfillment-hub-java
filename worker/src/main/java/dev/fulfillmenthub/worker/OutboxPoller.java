@@ -2,7 +2,8 @@ package dev.fulfillmenthub.worker;
 import dev.fulfillmenthub.runtime.messaging.SqsBroker;import dev.fulfillmenthub.runtime.messaging.WebhookQueue;import dev.fulfillmenthub.runtime.outbox.OutboxProcessor;import dev.fulfillmenthub.runtime.webhook.WebhookProcessingService;import dev.fulfillmenthub.runtime.reconciliation.ReconciliationService;import org.springframework.beans.factory.ObjectProvider;import org.springframework.scheduling.annotation.Scheduled;
 public class OutboxPoller { private final OutboxProcessor processor;private final ObjectProvider<SqsBroker> broker;private final ObjectProvider<WebhookQueue> webhookQueue;private final WebhookProcessingService webhooks;private final ReconciliationService reconciliation;
  public OutboxPoller(OutboxProcessor processor,ObjectProvider<SqsBroker> broker,ObjectProvider<WebhookQueue> webhookQueue,WebhookProcessingService webhooks,ReconciliationService reconciliation){this.processor=processor;this.broker=broker;this.webhookQueue=webhookQueue;this.webhooks=webhooks;this.reconciliation=reconciliation;}
- @Scheduled(fixedDelayString="${fulfillment.outbox.poll-ms:500}") public void poll(){processor.drain(50);}
+ @Scheduled(fixedDelayString="${fulfillment.outbox.poll-ms:500}") public void poll(){processor.drain(50);heartbeat();}
  @Scheduled(fixedDelayString="${fulfillment.messaging.poll-ms:1000}") public void consume(){var value=broker.getIfAvailable();if(value!=null)value.consume();}
  @Scheduled(fixedDelayString="${fulfillment.webhooks.poll-ms:1000}") public void webhooks(){var queue=webhookQueue.getIfAvailable();if(queue!=null)queue.consume(webhooks);webhooks.drain(20);}
- @Scheduled(fixedDelayString="${fulfillment.reconciliation.poll-ms:30000}") public void reconcile(){reconciliation.runBatch(25);} }
+ @Scheduled(fixedDelayString="${fulfillment.reconciliation.poll-ms:30000}") public void reconcile(){reconciliation.runBatch(25);heartbeat();}
+ private static void heartbeat(){try{java.nio.file.Files.writeString(java.nio.file.Path.of("/tmp/worker-ready"),java.time.Instant.now().toString());}catch(java.io.IOException failure){throw new IllegalStateException("Worker heartbeat unavailable",failure);}} }

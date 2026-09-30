@@ -32,7 +32,12 @@ Fonte .NET preservada sem alterações: `C:\Users\Gabriel\Documents\Codex\2026-0
 - F08: snapshots de delivery repetidos viram no-op sob lock; reconciliação deixou de engolir exceções silenciosamente.
 - F10: evento obrigatório sem handler não é mais marcado Processed.
 - F15: outbox ganhou owner/fencing, renovação antes do dispatch e batch máximo 10; heartbeat de visibility SQS ainda será verificado.
-- Próximo passo imediato: commit `fix(reconciliation)` e concluir F09/F11/F12/F14/F15, seguido de regressão total.
+- F09: rejeição permanente de delivery vira estado terminal e dispara cancelamento/refund durável.
+- F12: PostgreSQL local ganhou PVC; worker ganhou heartbeat, probes, `/tmp` gravável e graceful shutdown budget.
+- F13: `Sistema-portaria` commit `5694124` remove credenciais fixas do HEAD e usa configuração/hashes; rotação histórica continua recomendada.
+- F14: Maven Wrapper, Actions por SHA, timeouts, E2E no CI e scan Trivy das três imagens.
+- F15: SQS processa uma mensagem por vez e amplia visibility para 300s; outbox mantém fencing.
+- Próximo passo imediato: commits operacionais, regressão completa/E2E/scans, documentação final e GitHub.
 
 ## Evidência anterior preservada
 

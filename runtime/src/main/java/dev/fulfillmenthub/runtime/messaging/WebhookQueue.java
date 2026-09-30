@@ -34,9 +34,9 @@ public final class WebhookQueue {
     }
 
     public int consume(WebhookProcessingService processor) {
-        var response=sqs.receiveMessage(b->b.queueUrl(queueUrl).maxNumberOfMessages(10).waitTimeSeconds(1)
+        var response=sqs.receiveMessage(b->b.queueUrl(queueUrl).maxNumberOfMessages(1).waitTimeSeconds(1)
                 .messageSystemAttributeNames(MessageSystemAttributeName.APPROXIMATE_RECEIVE_COUNT));
-        for(var message:response.messages())try{if(!processor.processOne(UUID.fromString(message.body())))throw new IllegalStateException("Webhook was not completed");
+        for(var message:response.messages())try{sqs.changeMessageVisibility(b->b.queueUrl(queueUrl).receiptHandle(message.receiptHandle()).visibilityTimeout(300));if(!processor.processOne(UUID.fromString(message.body())))throw new IllegalStateException("Webhook was not completed");
             sqs.deleteMessage(b->b.queueUrl(queueUrl).receiptHandle(message.receiptHandle()));}
         catch(RuntimeException failure){int receives=Integer.parseInt(message.attributes().getOrDefault(MessageSystemAttributeName.APPROXIMATE_RECEIVE_COUNT,"1"));
             int delay=(int)Math.min(300,Math.max(1,5L<<Math.min(Math.max(0,receives-1),6)));
