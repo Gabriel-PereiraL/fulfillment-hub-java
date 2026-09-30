@@ -6,6 +6,7 @@ public class IdempotencyRow {
  @Column(nullable=false,length=64) public String requestHash; @Column(nullable=false,length=16) public String status;
  public Integer responseStatusCode; @Column(columnDefinition="text") public String responseBody;
  @Column(length=128) public String responseContentType; @Column(length=512) public String responseLocation;
+ public java.util.UUID orderId;
  @Column(nullable=false) public Instant createdAt; @Column(nullable=false) public Instant expiresAt;
  protected IdempotencyRow() {}
  public static final class Key implements Serializable { public String scope; public String key; public Key() {}

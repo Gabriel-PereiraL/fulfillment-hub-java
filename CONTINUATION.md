@@ -25,7 +25,9 @@ Fonte .NET preservada sem alterações: `C:\Users\Gabriel\Documents\Codex\2026-0
 - `deliveryRecoversPersistedQuoteAndAdoptsDuplicateAfterLostResponse` passou; houve uma entrega, uma quote e uma chave após resposta perdida.
 - F04 concluído localmente com `ProviderStatePolicy`, usado pelos caminhos reais de pagamento e entrega.
 - Cinco testes de política passaram; o teste integrado confirmou que Paid permanece Paid após snapshot Pending posterior.
-- Próximo passo imediato: commit `fix(domain)` e F05, tornando chave idempotente e pedido atomicamente recuperáveis.
+- F05 concluído localmente com migration V5: chave e `orderId` são ligados na transação do pedido/estoque/outbox; replay recupera o pedido se `complete` não ocorreu.
+- `committedOrderIsRecoveredWhenIdempotencyCompletionNeverRan` passou e provou um pedido, uma reserva de estoque e preservação da chave.
+- Próximo passo imediato: commit `fix(idempotency)` e F06/F07, adicionando claims duráveis com owner/token/lease.
 
 ## Evidência anterior preservada
 

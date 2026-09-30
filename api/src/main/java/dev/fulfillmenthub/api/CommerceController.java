@@ -74,6 +74,11 @@ public class CommerceController {
                 return ResponseEntity.status(422).body(java.util.Map.of("title","Idempotency key was used for another request"));
             if(reservation.state()==IdempotencyService.State.InProgress)
                 return ResponseEntity.status(409).body(java.util.Map.of("title","Request is already in progress"));
+            if(reservation.state()==IdempotencyService.State.Recovered){
+                var recovered=orderService.get(reservation.orderId(),UUID.fromString(customerClaim),false);var location="/api/v1/orders/"+reservation.orderId();
+                var serialized=json.writeValueAsString(recovered);idempotency.complete(scope,key,201,serialized,MediaType.APPLICATION_JSON_VALUE,location);
+                return ResponseEntity.status(201).header("Idempotent-Replayed","true").header("Location",location).body(recovered);
+            }
             if(reservation.state()==IdempotencyService.State.Replay){
                 var response=ResponseEntity.status(reservation.status()).header("Idempotent-Replayed","true");
                 if(reservation.location()!=null)response.header("Location",reservation.location());
@@ -87,7 +92,7 @@ public class CommerceController {
         try {
             var result=placement.place(UUID.fromString(customerClaim),address,
                     request.items().stream().map(i -> new OrderPlacementService.Line(i.productId(),i.quantity())).toList(),
-                    Money.brl("15.00"),key);
+                    Money.brl("15.00"),key,scope,key);
             var body=orderService.get(result.id(),UUID.fromString(customerClaim),false);
             var location="/api/v1/orders/"+result.id();
             idempotency.complete(scope,key,201,json.writeValueAsString(body),MediaType.APPLICATION_JSON_VALUE,location);

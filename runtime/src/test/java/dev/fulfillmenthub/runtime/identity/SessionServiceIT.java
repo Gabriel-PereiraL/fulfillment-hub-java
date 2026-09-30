@@ -16,6 +16,7 @@ import dev.fulfillmenthub.runtime.payment.PaymentProviderSettings;
 import dev.fulfillmenthub.runtime.providers.ProviderResilience;
 import dev.fulfillmenthub.runtime.delivery.DeliveryWorkflowService;
 import dev.fulfillmenthub.runtime.delivery.DeliveryProviderSettings;
+import dev.fulfillmenthub.runtime.idempotency.IdempotencyService;
 import dev.fulfillmenthub.runtime.messaging.SqsBroker;
 import dev.fulfillmenthub.runtime.messaging.SqsConfiguration;
 import dev.fulfillmenthub.runtime.messaging.MessagingSettings;
@@ -59,7 +60,7 @@ class SessionServiceIT {
     @EnableConfigurationProperties({TokenSettings.class, MessagingSettings.class})
     @EntityScan("dev.fulfillmenthub.runtime")
     @Import({RuntimeConfiguration.class, SessionService.class, OrderPlacementService.class, OrderService.class,
-            OutboxProcessor.class, WebhookInboxService.class, PaymentWorkflowService.class, SqsConfiguration.class, SqsBroker.class})
+            OutboxProcessor.class, WebhookInboxService.class, PaymentWorkflowService.class, IdempotencyService.class, SqsConfiguration.class, SqsBroker.class})
     static class TestApplication {}
 
     private ConfigurableApplicationContext context;
@@ -72,6 +73,7 @@ class SessionServiceIT {
     private OutboxProcessor outbox;
     private WebhookInboxService webhooks;
     private SqsBroker broker;
+    private IdempotencyService idempotency;
 
     private UUID userId;
 
@@ -107,6 +109,7 @@ class SessionServiceIT {
         outbox = context.getBean(OutboxProcessor.class);
         webhooks = context.getBean(WebhookInboxService.class);
         broker = context.getBean(SqsBroker.class);
+        idempotency = context.getBean(IdempotencyService.class);
     }
 
     @AfterAll
@@ -126,6 +129,7 @@ class SessionServiceIT {
             em.createNativeQuery("delete from deliveries").executeUpdate();
             em.createNativeQuery("delete from delivery_quotes").executeUpdate();
             em.createNativeQuery("delete from processed_messages").executeUpdate();
+            em.createNativeQuery("delete from idempotency_records").executeUpdate();
             em.createNativeQuery("delete from refresh_credentials").executeUpdate();
             em.createNativeQuery("delete from auth_sessions").executeUpdate();
             em.createNativeQuery("delete from users").executeUpdate();
@@ -191,6 +195,17 @@ class SessionServiceIT {
         assertEquals(1, scalar("select count(*) from orders where id='" + placed.id() + "'"));
         assertEquals(1, scalar("select count(*) from outbox_messages where aggregate_id='" + placed.id() + "'"));
         assertEquals(new BigDecimal("32.00"), placed.total().amount());
+    }
+
+    @Test
+    void committedOrderIsRecoveredWhenIdempotencyCompletionNeverRan() {
+        var productId=seedProduct(1);var customer=UUID.randomUUID();var scope=UUID.randomUUID().toString();var key="crash-window";var hash="ABC123";
+        assertEquals(IdempotencyService.State.Started,idempotency.begin(scope,key,hash).state());
+        var first=orders.place(customer,address(),List.of(new OrderPlacementService.Line(productId,1)),Money.brl("15"),key,scope,key);
+        var recovered=idempotency.begin(scope,key,hash);
+        assertEquals(IdempotencyService.State.Recovered,recovered.state());assertEquals(first.id(),recovered.orderId());
+        assertEquals(1,scalar("select count(*) from orders where idempotency_key='"+key+"'"));assertEquals(0,scalar("select stock_quantity from products where id='"+productId+"'"));
+        idempotency.release(scope,key);assertEquals(1,scalar("select count(*) from idempotency_records where scope='"+scope+"' and key='"+key+"'"));
     }
 
     @Test

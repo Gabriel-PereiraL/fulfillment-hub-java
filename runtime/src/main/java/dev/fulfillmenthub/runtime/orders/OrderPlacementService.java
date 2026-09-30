@@ -6,6 +6,7 @@ import dev.fulfillmenthub.domain.Money;
 import dev.fulfillmenthub.domain.Order;
 import dev.fulfillmenthub.domain.Product;
 import dev.fulfillmenthub.runtime.outbox.OutboxRow;
+import dev.fulfillmenthub.runtime.idempotency.IdempotencyRow;
 import jakarta.persistence.EntityManager;
 import java.time.Clock;
 import java.util.Comparator;
@@ -30,10 +31,14 @@ public class OrderPlacementService {
 
     public Placed place(UUID customerId, Address address, List<Line> requestLines,
             Money deliveryFee, String idempotencyKey) {
+        return place(customerId,address,requestLines,deliveryFee,idempotencyKey,null,null);
+    }
+    public Placed place(UUID customerId, Address address, List<Line> requestLines,
+            Money deliveryFee, String idempotencyKey,String scope,String reservationKey) {
         if (requestLines == null || requestLines.isEmpty()) throw new DomainException("An order must have at least one item.");
         for (int attempt = 1; attempt <= 3; attempt++) {
             try {
-                return tx.execute(status -> placeOnce(customerId, address, requestLines, deliveryFee, idempotencyKey));
+                return tx.execute(status -> placeOnce(customerId, address, requestLines, deliveryFee, idempotencyKey,scope,reservationKey));
             } catch (OptimisticLockingFailureException failure) {
                 em.clear();
                 if (attempt == 3) throw failure;
@@ -43,7 +48,7 @@ public class OrderPlacementService {
     }
 
     private Placed placeOnce(UUID customerId, Address address, List<Line> requestLines,
-            Money deliveryFee, String idempotencyKey) {
+            Money deliveryFee, String idempotencyKey,String scope,String reservationKey) {
         var ids = requestLines.stream().map(Line::productId).distinct().sorted().toList();
         if (ids.size() != requestLines.size()) throw new DomainException("An order cannot contain the same product more than once.");
         var rows = em.createQuery("select p from ProductRow p where p.id in :ids order by p.id", ProductRow.class)
@@ -63,6 +68,8 @@ public class OrderPlacementService {
         var row = map(aggregate);
         em.persist(row);
         em.persist(OutboxRow.pending(row.id, now));
+        if(scope!=null){var reservation=em.find(IdempotencyRow.class,new IdempotencyRow.Key(scope,reservationKey),jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+            if(reservation==null||!"InProgress".equals(reservation.status)||reservation.orderId!=null)throw new IllegalStateException("Idempotency reservation is not available.");reservation.orderId=row.id;}
         em.flush();
         return new Placed(row.id, row.number, aggregate.subtotal(), aggregate.deliveryFee(), aggregate.total());
     }
