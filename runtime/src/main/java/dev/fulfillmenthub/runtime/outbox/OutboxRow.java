@@ -7,6 +7,7 @@ public class OutboxRow {
  @Column(nullable=false) public Instant occurredAt; @Column(nullable=false) public Instant createdAt;
  @Column(nullable=false,length=16) public String status; @Column(nullable=false) public int attempts;
  @Column(nullable=false) public Instant nextAttemptAt; public Instant lockedUntil; public Instant processedAt;
+ public UUID owner;
  @Column(length=1000) public String lastError; @Column(length=64) public String correlationId;
  @Column(length=128) public String traceParent; protected OutboxRow() {}
  public static OutboxRow pending(UUID aggregateId, Instant now) { return pending("OrderPlaced",aggregateId,now); }

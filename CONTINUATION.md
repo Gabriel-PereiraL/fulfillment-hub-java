@@ -29,7 +29,10 @@ Fonte .NET preservada sem alterações: `C:\Users\Gabriel\Documents\Codex\2026-0
 - `committedOrderIsRecoveredWhenIdempotencyCompletionNeverRan` passou e provou um pedido, uma reserva de estoque e preservação da chave.
 - F06/F07 concluídos localmente com migration V6: consumer e webhook fazem claim antes do efeito, usam owner/lease e conclusão condicionada ao token.
 - O teste concorrente da inbox passou e comprovou um claim entre dois workers e retomada após lease expirado.
-- Próximo passo imediato: commit `fix(messaging)` e resolver F08–F10/F15 em outbox/reconciliação/classificação de falhas.
+- F08: snapshots de delivery repetidos viram no-op sob lock; reconciliação deixou de engolir exceções silenciosamente.
+- F10: evento obrigatório sem handler não é mais marcado Processed.
+- F15: outbox ganhou owner/fencing, renovação antes do dispatch e batch máximo 10; heartbeat de visibility SQS ainda será verificado.
+- Próximo passo imediato: commit `fix(reconciliation)` e concluir F09/F11/F12/F14/F15, seguido de regressão total.
 
 ## Evidência anterior preservada
 

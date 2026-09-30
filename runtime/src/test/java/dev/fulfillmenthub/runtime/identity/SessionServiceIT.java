@@ -263,12 +263,12 @@ class SessionServiceIT {
     }
 
     @Test
-    void outboxAcknowledgesKnownUnhandledEventsAndParksPoisonAfterFiveAttempts() {
+    void outboxNeverAcknowledgesRequiredEventsWithoutAHandlerAndParksPoisonAfterFiveAttempts() {
         var known=OutboxRow.pending("OrderPaid",UUID.randomUUID(),Instant.now());
         var poison=OutboxRow.pending("UnrecognizedPoison",UUID.randomUUID(),Instant.now());
         tx.executeWithoutResult(status->{em.persist(known);em.persist(poison);});
         assertEquals(2,outbox.drain(50));
-        assertEquals(1,scalar("select count(*) from outbox_messages where id='"+known.id+"' and status='Processed'"));
+        assertEquals(1,scalar("select count(*) from outbox_messages where id='"+known.id+"' and status='Pending' and attempts=1"));
         for(int attempt=1;attempt<5;attempt++){
             tx.executeWithoutResult(status->em.createNativeQuery("update outbox_messages set next_attempt_at=now() where id=:id")
                     .setParameter("id",poison.id).executeUpdate());

@@ -11,6 +11,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 @Service
 public final class ReconciliationService {
+    private static final org.slf4j.Logger LOG=org.slf4j.LoggerFactory.getLogger(ReconciliationService.class);
     private final EntityManager em;
     private final TransactionTemplate tx;
     private final ObjectProvider<PaymentGatewayClient> payments;
@@ -26,14 +27,14 @@ public final class ReconciliationService {
         int processed = 0;
         var payment = payments.getIfAvailable();
         if (payment != null) {
-            for (UUID paymentId : paymentsWithoutProviderId(bounded)) { try { payment.resume(paymentId); processed++; } catch (RuntimeException ignored) { } }
-            for (String providerId : paymentProviderIds(bounded)) { try { payment.verifyAndApply(providerId); processed++; } catch (RuntimeException ignored) { } }
-            for (UUID orderId : cancelledPaidOrders(bounded)) { try { payment.refundForOrder(orderId); processed++; } catch (RuntimeException ignored) { } }
+            for (UUID paymentId : paymentsWithoutProviderId(bounded)) { try { payment.resume(paymentId); processed++; } catch (RuntimeException failure) { LOG.warn("payment_resume_failed paymentId={}",paymentId,failure); } }
+            for (String providerId : paymentProviderIds(bounded)) { try { payment.verifyAndApply(providerId); processed++; } catch (RuntimeException failure) { LOG.warn("payment_reconcile_failed providerId={}",providerId,failure); } }
+            for (UUID orderId : cancelledPaidOrders(bounded)) { try { payment.refundForOrder(orderId); processed++; } catch (RuntimeException failure) { LOG.warn("payment_refund_failed orderId={}",orderId,failure); } }
         }
         var delivery = deliveries.getIfAvailable();
         if (delivery != null) {
-            for (UUID orderId : paidOrdersWithoutDelivery(bounded)) { try { delivery.request(orderId); processed++; } catch (RuntimeException ignored) { } }
-            for (String providerId : deliveryIds(bounded)) { try { delivery.verifyAndApply(providerId); processed++; } catch (RuntimeException ignored) { } }
+            for (UUID orderId : paidOrdersWithoutDelivery(bounded)) { try { delivery.request(orderId); processed++; } catch (RuntimeException failure) { LOG.warn("delivery_request_failed orderId={}",orderId,failure); } }
+            for (String providerId : deliveryIds(bounded)) { try { delivery.verifyAndApply(providerId); processed++; } catch (RuntimeException failure) { LOG.warn("delivery_reconcile_failed providerId={}",providerId,failure); } }
         }
         return processed;
     }
