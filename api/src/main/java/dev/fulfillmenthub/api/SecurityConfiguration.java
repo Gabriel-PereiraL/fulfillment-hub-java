@@ -47,6 +47,7 @@ public class SecurityConfiguration {
                 .requestCache(cache -> cache.disable())
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/health/live", "/health/ready", "/api/v1/auth/login", "/api/v1/auth/refresh", "/api/v1/webhooks/**").permitAll()
+                        .requestMatchers("/actuator/prometheus").hasRole("Admin")
                         .requestMatchers("/api/v1/users/**", "/api/v1/admin/**").hasRole("Admin")
                         .anyRequest().authenticated())
                 .oauth2ResourceServer(oauth -> oauth.jwt(jwt -> jwt.jwtAuthenticationConverter(converter))

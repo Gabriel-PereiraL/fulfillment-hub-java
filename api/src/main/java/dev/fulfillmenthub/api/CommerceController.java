@@ -86,10 +86,10 @@ public class CommerceController {
                         .body(reservation.body().getBytes(StandardCharsets.UTF_8));
             }
         }
-        var a=request.deliveryAddress();
-        var address=new Address(a.street(),a.number(),a.complement(),a.district(),a.city(),a.state(),a.postalCode(),
-                a.country()==null?"BR":a.country(),a.latitude(),a.longitude());
         try {
+            var a=request.deliveryAddress();
+            var address=new Address(a.street(),a.number(),a.complement(),a.district(),a.city(),a.state(),a.postalCode(),
+                    a.country()==null?"BR":a.country(),a.latitude(),a.longitude());
             var result=placement.place(UUID.fromString(customerClaim),address,
                     request.items().stream().map(i -> new OrderPlacementService.Line(i.productId(),i.quantity())).toList(),
                     Money.brl("15.00"),key,scope,key);

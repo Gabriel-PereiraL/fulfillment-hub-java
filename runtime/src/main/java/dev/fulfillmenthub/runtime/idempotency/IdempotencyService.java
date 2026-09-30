@@ -6,7 +6,7 @@ public class IdempotencyService {
  public record Result(State state,Integer status,String body,String contentType,String location,java.util.UUID orderId) {}
  private final EntityManager em; private final TransactionTemplate tx; private final Clock clock;
  public IdempotencyService(EntityManager em,TransactionTemplate tx,Clock clock){this.em=em;this.tx=tx;this.clock=clock;}
- public Result begin(String scope,String key,String hash){try{return beginTransaction(scope,key,hash);}catch(DataIntegrityViolationException race){return beginTransaction(scope,key,hash);}}
+ public Result begin(String scope,String key,String hash){try{return beginTransaction(scope,key,hash);}catch(DataIntegrityViolationException|PersistenceException race){return beginTransaction(scope,key,hash);}}
  private Result beginTransaction(String scope,String key,String hash){return tx.execute(s->{
   var id=new IdempotencyRow.Key(scope,key); var row=em.find(IdempotencyRow.class,id,LockModeType.PESSIMISTIC_WRITE); var now=clock.instant();
   if(row==null){row=new IdempotencyRow();row.scope=scope;row.key=key;row.requestHash=hash;row.status="InProgress";row.createdAt=now;row.expiresAt=now.plus(Duration.ofHours(24));em.persist(row);em.flush();return new Result(State.Started,null,null,null,null,null);}
