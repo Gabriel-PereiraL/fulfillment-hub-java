@@ -35,17 +35,20 @@ public class DeliveryWorkflowService {
         this.requiresNew=new TransactionTemplate(java.util.Objects.requireNonNull(tx.getTransactionManager()));this.requiresNew.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);var requests=new SimpleClientHttpRequestFactory();requests.setConnectTimeout(java.time.Duration.ofSeconds(5));requests.setReadTimeout(java.time.Duration.ofSeconds(5));this.http=RestClient.builder().requestFactory(requests).baseUrl(settings.baseUrl().toString()).build();}
     public UUID request(UUID orderId){var snapshot=requiresNew.execute(s->{var order=em.find(OrderRow.class,orderId,LockModeType.PESSIMISTIC_WRITE);if(order==null||!"Paid".equals(order.status))return null;
         var active=em.createQuery("select d from DeliveryRow d where d.orderId=:order and d.status not in ('Cancelled','Delivered','Returned')",DeliveryRow.class)
-                .setParameter("order",orderId).getResultStream().findFirst().orElse(null);if(active!=null)return new Snapshot(order,active,null);
-        return new Snapshot(order,null,null);});if(snapshot==null)return null;
-        var token=token();var quote=snapshot.delivery()==null?quote(snapshot.order(),token):null;
-        var deliveryId=requiresNew.execute(s->{var order=em.find(OrderRow.class,orderId,LockModeType.PESSIMISTIC_WRITE);if(order.deliveryId!=null)return order.deliveryId;
-            var q=new DeliveryQuoteRow();q.id=UUID.randomUUID();q.orderId=orderId;q.provider="simulator";q.providerQuoteId=quote.id();q.fee=quote.fee().amount();q.currency=quote.fee().currency();
-            q.expiresAt=quote.expiresAt();q.estimatedDropoffAt=quote.estimatedDropoffAt();q.durationMinutes=quote.durationMinutes();q.pickupDurationMinutes=quote.pickupDurationMinutes();q.createdAt=clock.instant();em.persist(q);
-            var d=new DeliveryRow();d.id=UUID.randomUUID();d.orderId=orderId;d.quoteId=q.id;d.provider="simulator";d.providerIdempotencyKey="order-"+orderId.toString().replace("-","")+"-delivery-1";
-            d.status="Pending";d.fee=q.fee;d.currency=q.currency;d.createdAt=clock.instant();d.updatedAt=d.createdAt;em.persist(d);em.flush();return d.id;});
-        var local=tx.execute(s->em.find(DeliveryRow.class,deliveryId));if(local.providerDeliveryId!=null)return deliveryId;
+                .setParameter("order",orderId).setLockMode(LockModeType.PESSIMISTIC_WRITE).getResultStream().findFirst().orElse(null);
+        var existingQuote=active==null?null:em.find(DeliveryQuoteRow.class,active.quoteId);return new Snapshot(order,active,toQuote(existingQuote));});if(snapshot==null)return null;
+        if(snapshot.delivery()!=null&&snapshot.delivery().providerDeliveryId!=null)return snapshot.delivery().id;
+        var token=token();var quote=snapshot.quote();if(quote==null||!quote.expiresAt().isAfter(clock.instant()))quote=quote(snapshot.order(),token);var selectedQuote=quote;
+        var deliveryId=requiresNew.execute(s->{var order=em.find(OrderRow.class,orderId,LockModeType.PESSIMISTIC_WRITE);var active=em.createQuery("select d from DeliveryRow d where d.orderId=:order and d.status not in ('Cancelled','Delivered','Returned')",DeliveryRow.class)
+                .setParameter("order",orderId).setLockMode(LockModeType.PESSIMISTIC_WRITE).getResultStream().findFirst().orElse(null);if(active!=null&&active.providerDeliveryId!=null)return active.id;
+            var currentQuote=active==null?null:em.find(DeliveryQuoteRow.class,active.quoteId);if(currentQuote==null||!currentQuote.expiresAt.isAfter(clock.instant()))currentQuote=persistQuote(orderId,selectedQuote);
+            if(active!=null){active.quoteId=currentQuote.id;active.fee=currentQuote.fee;active.currency=currentQuote.currency;active.updatedAt=clock.instant();return active.id;}
+            var d=new DeliveryRow();d.id=UUID.randomUUID();d.orderId=orderId;d.quoteId=currentQuote.id;d.provider="simulator";d.providerIdempotencyKey="order-"+orderId.toString().replace("-","")+"-delivery-1";
+            d.status="Pending";d.fee=currentQuote.fee;d.currency=currentQuote.currency;d.createdAt=clock.instant();d.updatedAt=d.createdAt;em.persist(d);em.flush();return d.id;});
+        var local=tx.execute(s->em.find(DeliveryRow.class,deliveryId));if(local.providerDeliveryId!=null)return deliveryId;var localQuote=tx.execute(s->em.find(DeliveryQuoteRow.class,local.quoteId));
         var remote=resilience.execute("delivery",()->http.post().uri("/delivery/v1/customers/{customer}/deliveries",settings.customerId()).header("Authorization","Bearer "+token)
-                .header("Idempotency-Key",local.providerIdempotencyKey).contentType(MediaType.APPLICATION_JSON).body(new Create(quote.id(),"FH-"+orderId)).retrieve().body(Remote.class));
+                .header("Idempotency-Key",local.providerIdempotencyKey).contentType(MediaType.APPLICATION_JSON).body(new Create(localQuote.providerQuoteId,"FH-"+orderId)).retrieve()
+                .onStatus(status->status.value()==409,(request,response)->{}).body(Remote.class));
         if(remote==null)throw new IllegalStateException("Empty delivery provider response");tx.executeWithoutResult(s->{var d=em.find(DeliveryRow.class,deliveryId,LockModeType.PESSIMISTIC_WRITE);
             d.providerDeliveryId=remote.id();d.status=map(remote.status());d.trackingUrl=remote.trackingUrl();d.fee=remote.fee().amount();d.currency=remote.fee().currency();d.updatedAt=clock.instant();
             var order=em.find(OrderRow.class,orderId,LockModeType.PESSIMISTIC_WRITE);order.deliveryId=d.id;order.status="DeliveryRequested";order.updatedAt=clock.instant();history(order.id,"Paid","DeliveryRequested",order.updatedAt,"Delivery created");});return deliveryId;}
@@ -66,6 +69,9 @@ public class DeliveryWorkflowService {
         var dropoff=new Party("Customer",new Address(order.street,order.city,order.state,order.postalCode,order.country),"+5511999999999");
         var value=resilience.execute("delivery",()->http.post().uri("/delivery/v1/customers/{customer}/delivery_quotes",settings.customerId()).header("Authorization","Bearer "+token).contentType(MediaType.APPLICATION_JSON)
                 .body(new QuoteRequest(pickup,dropoff,new Money(order.subtotal,order.subtotalCurrency))).retrieve().body(Quote.class));if(value==null)throw new IllegalStateException("Empty delivery quote response");return value;}
+    private DeliveryQuoteRow persistQuote(UUID orderId,Quote quote){var q=new DeliveryQuoteRow();q.id=UUID.randomUUID();q.orderId=orderId;q.provider="simulator";q.providerQuoteId=quote.id();q.fee=quote.fee().amount();q.currency=quote.fee().currency();
+        q.expiresAt=quote.expiresAt();q.estimatedDropoffAt=quote.estimatedDropoffAt();q.durationMinutes=quote.durationMinutes();q.pickupDurationMinutes=quote.pickupDurationMinutes();q.createdAt=clock.instant();em.persist(q);return q;}
+    private static Quote toQuote(DeliveryQuoteRow row){return row==null?null:new Quote(row.providerQuoteId,new Money(row.fee,row.currency),row.expiresAt,row.estimatedDropoffAt,row.durationMinutes,row.pickupDurationMinutes);}
     private static String map(String status){return switch(status){case "delivered"->"Delivered";case "returned"->"Returned";case "cancelled"->"Cancelled";default->"Requested";};}
     private void history(UUID order,String from,String to,Instant at,String reason){em.createNativeQuery("insert into order_status_changes(id,order_id,from_status,to_status,occurred_at,reason) values (:id,:order,:from,:to,:at,:reason)")
             .setParameter("id",UUID.randomUUID()).setParameter("order",order).setParameter("from",from).setParameter("to",to).setParameter("at",at).setParameter("reason",reason).executeUpdate();}

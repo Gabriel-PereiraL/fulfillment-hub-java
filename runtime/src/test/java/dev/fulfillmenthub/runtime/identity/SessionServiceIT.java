@@ -14,6 +14,8 @@ import dev.fulfillmenthub.runtime.payment.PaymentWorkflowService;
 import dev.fulfillmenthub.runtime.payment.PaymentGatewayClient;
 import dev.fulfillmenthub.runtime.payment.PaymentProviderSettings;
 import dev.fulfillmenthub.runtime.providers.ProviderResilience;
+import dev.fulfillmenthub.runtime.delivery.DeliveryWorkflowService;
+import dev.fulfillmenthub.runtime.delivery.DeliveryProviderSettings;
 import dev.fulfillmenthub.runtime.messaging.SqsBroker;
 import dev.fulfillmenthub.runtime.messaging.SqsConfiguration;
 import dev.fulfillmenthub.runtime.messaging.MessagingSettings;
@@ -120,6 +122,9 @@ class SessionServiceIT {
     void resetDatabase() {
         tx.executeWithoutResult(status -> {
             em.createNativeQuery("delete from webhook_events").executeUpdate();
+            em.createNativeQuery("delete from delivery_events").executeUpdate();
+            em.createNativeQuery("delete from deliveries").executeUpdate();
+            em.createNativeQuery("delete from delivery_quotes").executeUpdate();
             em.createNativeQuery("delete from processed_messages").executeUpdate();
             em.createNativeQuery("delete from refresh_credentials").executeUpdate();
             em.createNativeQuery("delete from auth_sessions").executeUpdate();
@@ -323,6 +328,23 @@ class SessionServiceIT {
             assertEquals(2,scalar("select count(*) from payment_attempts where payment_id='"+paymentId+"'"));
             assertEquals(1,providerEffects.get(),"the stable idempotency key must represent one remote payment");
             assertEquals(1,providerKeys.size());
+        }finally{server.stop(0);}
+    }
+
+    @Test
+    void deliveryRecoversPersistedQuoteAndAdoptsDuplicateAfterLostResponse() throws Exception {
+        var productId=seedProduct(1);var placed=orders.place(UUID.randomUUID(),address(),
+                List.of(new OrderPlacementService.Line(productId,1)),Money.brl("15"),"lost-delivery-response");
+        tx.executeWithoutResult(status->em.createNativeQuery("update orders set status='Paid' where id=:id").setParameter("id",placed.id()).executeUpdate());
+        var keys=java.util.concurrent.ConcurrentHashMap.<String>newKeySet();var returnResponses=new AtomicBoolean();var remoteId="del_"+UUID.randomUUID().toString().replace("-","");
+        var server=HttpServer.create(new InetSocketAddress("127.0.0.1",0),0);server.createContext("/delivery",exchange->{var path=exchange.getRequestURI().getPath();exchange.getRequestBody().readAllBytes();
+            String json;if(path.endsWith("/oauth/token"))json="{\"access_token\":\"sim_test\",\"token_type\":\"Bearer\",\"expires_in\":300,\"scope\":\"deliveries\"}";
+            else if(path.endsWith("/delivery_quotes"))json=("{\"id\":\"quote-1\",\"fee\":{\"amount\":15.00,\"currency\":\"BRL\"},\"expires_at\":\"%s\",\"estimated_dropoff_at\":\"%s\",\"duration_minutes\":30,\"pickup_duration_minutes\":10}").formatted(Instant.now().plusSeconds(300),Instant.now().plusSeconds(1800));
+            else{keys.add(exchange.getRequestHeaders().getFirst("Idempotency-Key"));if(!returnResponses.get()){exchange.close();return;}json=("{\"id\":\"%s\",\"status\":\"pending\",\"fee\":{\"amount\":15.00,\"currency\":\"BRL\"},\"tracking_url\":\"https://tracking.invalid/%s\",\"updated_at\":\"%s\"}").formatted(remoteId,remoteId,Instant.now());exchange.getResponseHeaders().add("X-Existing-Delivery-Id",remoteId);}
+            var body=json.getBytes(StandardCharsets.UTF_8);exchange.getResponseHeaders().add("Content-Type","application/json");exchange.sendResponseHeaders(path.endsWith("/deliveries")&&returnResponses.get()?409:200,body.length);exchange.getResponseBody().write(body);exchange.close();});server.start();
+        try{var base=URI.create("http://127.0.0.1:"+server.getAddress().getPort()+"/delivery");var workflow=new DeliveryWorkflowService(em,tx,java.time.Clock.systemUTC(),new DeliveryProviderSettings(true,base,"customer","client","secret"),new ProviderResilience());
+            assertThrows(org.springframework.web.client.RestClientException.class,()->workflow.request(placed.id()));assertEquals(1,scalar("select count(*) from deliveries where order_id='"+placed.id()+"'"));assertEquals(1,scalar("select count(*) from delivery_quotes where order_id='"+placed.id()+"'"));
+            returnResponses.set(true);var localId=workflow.request(placed.id());assertNotNull(localId);assertEquals(remoteId,textScalar("select provider_delivery_id from deliveries where id='"+localId+"'"));assertEquals(1,keys.size());assertEquals(1,scalar("select count(*) from deliveries where order_id='"+placed.id()+"'"));
         }finally{server.stop(0);}
     }
 

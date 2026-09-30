@@ -21,7 +21,9 @@ Fonte .NET preservada sem alterações: `C:\Users\Gabriel\Documents\Codex\2026-0
 - F02 concluído localmente: estados `Submitting`/`Unknown`, tentativa desconhecida encerrada e reconciliação de pagamentos sem provider ID usando a chave original.
 - `paymentRecoversWhenProviderExecutesButEveryResponseIsLost` passou e provou uma única chave/efeito remoto e adoção do pagamento na retomada.
 - Evidência da etapa em 30/09/2026: 44 testes de domínio, 3 de resiliência e 1 integração direcionada passaram.
-- Próximo passo imediato: commit `fix(payments)` e implementação de F03 para delivery retomável.
+- F03 concluído localmente: a retomada recarrega entrega/quote persistidas, renova quote expirada, mantém a chave e adota duplicate/conflict do provider.
+- `deliveryRecoversPersistedQuoteAndAdoptsDuplicateAfterLostResponse` passou; houve uma entrega, uma quote e uma chave após resposta perdida.
+- Próximo passo imediato: commit `fix(delivery)` e F04, centralizando aplicação de estados externos e bloqueando regressões fora de ordem.
 
 ## Evidência anterior preservada
 
