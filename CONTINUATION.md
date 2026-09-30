@@ -18,11 +18,10 @@ Fonte .NET preservada sem alterações: `C:\Users\Gabriel\Documents\Codex\2026-0
 - F01 foi commitado em `882fbee`: a chamada externa direta foi removida do caminho HTTP. O cancelamento autorizado persiste `OrderCancelled`; o consumidor solicita refund e cancelamento da entrega.
 - `customerCannotCancelAnotherCustomersOrderOrScheduleProviderEffects` prova que estado, estoque e outbox permanecem inalterados para pedido alheio.
 - Regressão da etapa: 44 testes de domínio, 3 de resiliência e 10 integrados passaram; zero falhas.
-- F02 possui alterações não commitadas em `PaymentGatewayClient`, `ReconciliationService` e `SessionServiceIT`.
-- O primeiro teste F02 ficou vermelho apenas pela classe concreta da exceção (`RestClientException` observada); a expectativa foi corrigida mantendo todas as garantias.
-- A segunda execução foi interrompida antes do resultado por solicitação do usuário. F02 é `IN PROGRESS / NOT VERIFIED`.
-- Não há validação Maven em execução. Não houve push dessas alterações.
-- Retomada exata: executar o teste `paymentRecoversWhenProviderExecutesButEveryResponseIsLost`; revisar a classificação de transporte; só então completar/commitir F02.
+- F02 concluído localmente: estados `Submitting`/`Unknown`, tentativa desconhecida encerrada e reconciliação de pagamentos sem provider ID usando a chave original.
+- `paymentRecoversWhenProviderExecutesButEveryResponseIsLost` passou e provou uma única chave/efeito remoto e adoção do pagamento na retomada.
+- Evidência da etapa em 30/09/2026: 44 testes de domínio, 3 de resiliência e 1 integração direcionada passaram.
+- Próximo passo imediato: commit `fix(payments)` e implementação de F03 para delivery retomável.
 
 ## Evidência anterior preservada
 

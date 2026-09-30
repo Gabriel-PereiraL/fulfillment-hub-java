@@ -26,7 +26,8 @@ public final class ReconciliationService {
         int processed = 0;
         var payment = payments.getIfAvailable();
         if (payment != null) {
-            for (String providerId : paymentIds(bounded)) { try { payment.verifyAndApply(providerId); processed++; } catch (RuntimeException ignored) { } }
+            for (UUID paymentId : paymentsWithoutProviderId(bounded)) { try { payment.resume(paymentId); processed++; } catch (RuntimeException ignored) { } }
+            for (String providerId : paymentProviderIds(bounded)) { try { payment.verifyAndApply(providerId); processed++; } catch (RuntimeException ignored) { } }
             for (UUID orderId : cancelledPaidOrders(bounded)) { try { payment.refundForOrder(orderId); processed++; } catch (RuntimeException ignored) { } }
         }
         var delivery = deliveries.getIfAvailable();
@@ -37,7 +38,10 @@ public final class ReconciliationService {
         return processed;
     }
 
-    private List<String> paymentIds(int limit) { return tx.execute(s -> em.createQuery(
+    private List<UUID> paymentsWithoutProviderId(int limit) { return tx.execute(s -> em.createQuery(
+            "select p.id from PaymentRow p where p.status in ('Pending','Submitting','Unknown') and p.providerPaymentId is null order by p.updatedAt", UUID.class)
+            .setMaxResults(limit).getResultList()); }
+    private List<String> paymentProviderIds(int limit) { return tx.execute(s -> em.createQuery(
             "select p.providerPaymentId from PaymentRow p where p.status in ('Pending','Authorized') and p.providerPaymentId is not null order by p.updatedAt", String.class)
             .setMaxResults(limit).getResultList()); }
     private List<UUID> cancelledPaidOrders(int limit) { return tx.execute(s -> em.createQuery(

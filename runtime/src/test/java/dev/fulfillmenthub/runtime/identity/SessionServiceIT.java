@@ -11,6 +11,9 @@ import dev.fulfillmenthub.runtime.orders.OrderService;
 import dev.fulfillmenthub.runtime.outbox.OutboxProcessor;
 import dev.fulfillmenthub.runtime.outbox.OutboxRow;
 import dev.fulfillmenthub.runtime.payment.PaymentWorkflowService;
+import dev.fulfillmenthub.runtime.payment.PaymentGatewayClient;
+import dev.fulfillmenthub.runtime.payment.PaymentProviderSettings;
+import dev.fulfillmenthub.runtime.providers.ProviderResilience;
 import dev.fulfillmenthub.runtime.messaging.SqsBroker;
 import dev.fulfillmenthub.runtime.messaging.SqsConfiguration;
 import dev.fulfillmenthub.runtime.messaging.MessagingSettings;
@@ -24,6 +27,11 @@ import java.util.HexFormat;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.net.InetSocketAddress;
+import java.net.URI;
+import com.sun.net.httpserver.HttpServer;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import org.junit.jupiter.api.AfterAll;
@@ -288,6 +296,36 @@ class SessionServiceIT {
         assertEquals(1, scalar("select count(*) from outbox_messages where aggregate_id='" + placed.id() + "' and status='Processed'"));
     }
 
+    @Test
+    void paymentRecoversWhenProviderExecutesButEveryResponseIsLost() throws Exception {
+        var productId=seedProduct(1);var placed=orders.place(UUID.randomUUID(),address(),
+                List.of(new OrderPlacementService.Line(productId,1)),Money.brl("15"),"lost-payment-response");
+        assertEquals(1,outbox.drain(50));assertEquals(1,broker.consume());
+        var paymentId=tx.execute(status->(UUID)em.createNativeQuery("select id from payments where order_id=:order")
+                .setParameter("order",placed.id()).getSingleResult());
+        var providerEffects=new AtomicInteger();var providerKeys=java.util.concurrent.ConcurrentHashMap.<String>newKeySet();var returnResponses=new AtomicBoolean();var remoteId="pay_"+UUID.randomUUID().toString().replace("-","");
+        var server=HttpServer.create(new InetSocketAddress("127.0.0.1",0),0);
+        server.createContext("/payments/v1/payments",exchange->{
+            if(providerKeys.add(exchange.getRequestHeaders().getFirst("Idempotency-Key")))providerEffects.incrementAndGet();exchange.getRequestBody().readAllBytes();
+            if(!returnResponses.get()){exchange.close();return;}
+            var json=("{\"id\":\"%s\",\"status\":\"pending\",\"amount\":{\"amount\":\"25.00\",\"currency\":\"BRL\"},\"failure_code\":null,\"updated_at\":\"%s\"}")
+                    .formatted(remoteId,Instant.now());var body=json.getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type","application/json");exchange.sendResponseHeaders(200,body.length);exchange.getResponseBody().write(body);exchange.close();
+        });server.start();
+        try{
+            var gateway=new PaymentGatewayClient(em,tx,java.time.Clock.systemUTC(),
+                    new PaymentProviderSettings(true, URI.create("http://127.0.0.1:"+server.getAddress().getPort()),"test-token"),new ProviderResilience());
+            assertThrows(org.springframework.web.client.RestClientException.class,()->gateway.submit(paymentId));
+            assertEquals("Unknown",textScalar("select status from payments where id='"+paymentId+"'"));
+            assertEquals("Unknown",textScalar("select outcome from payment_attempts where payment_id='"+paymentId+"'"));
+            returnResponses.set(true);assertTrue(gateway.resume(paymentId));
+            assertEquals(remoteId,textScalar("select provider_payment_id from payments where id='"+paymentId+"'"));
+            assertEquals(2,scalar("select count(*) from payment_attempts where payment_id='"+paymentId+"'"));
+            assertEquals(1,providerEffects.get(),"the stable idempotency key must represent one remote payment");
+            assertEquals(1,providerKeys.size());
+        }finally{server.stop(0);}
+    }
+
     private static String hmac(String key, String timestamp, byte[] body) throws Exception {
         var mac = Mac.getInstance("HmacSHA256");
         mac.init(new SecretKeySpec(key.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
@@ -305,6 +343,7 @@ class SessionServiceIT {
     private int scalar(String sql) {
         return tx.execute(status -> ((Number) em.createNativeQuery(sql).getSingleResult()).intValue());
     }
+    private String textScalar(String sql){return tx.execute(status->String.valueOf(em.createNativeQuery(sql).getSingleResult()));}
     private static Address address() {
         return new Address("Main Street", "10", null, "Center", "Sao Paulo", "SP", "01001000", "BR", null, null);
     }
