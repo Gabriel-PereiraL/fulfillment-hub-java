@@ -17,6 +17,7 @@ import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.web.client.RestClient;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import dev.fulfillmenthub.runtime.providers.ProviderResilience;
+import dev.fulfillmenthub.runtime.providers.ProviderStatePolicy;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 @Service
@@ -55,8 +56,8 @@ public class DeliveryWorkflowService {
     public boolean verifyAndApply(String providerDeliveryId){var localId=tx.execute(s->em.createQuery("select d.id from DeliveryRow d where d.providerDeliveryId=:id",UUID.class).setParameter("id",providerDeliveryId).getResultStream().findFirst().orElse(null));
         if(localId==null)return false;var token=token();var remote=resilience.execute("delivery",()->http.get().uri("/delivery/v1/customers/{customer}/deliveries/{id}",settings.customerId(),providerDeliveryId)
                 .header("Authorization","Bearer "+token).retrieve().body(Remote.class));if(remote==null)throw new IllegalStateException("Empty delivery provider response");
-        tx.executeWithoutResult(s->{var delivery=em.find(DeliveryRow.class,localId,LockModeType.PESSIMISTIC_WRITE);var now=clock.instant();delivery.status=map(remote.status());delivery.lastProviderEventAt=remote.updatedAt();delivery.updatedAt=now;
-            var event=new DeliveryEventRow();event.id=UUID.randomUUID();event.delivery=delivery;event.providerEventId="reconcile-"+remote.updatedAt();event.providerStatus=remote.status();event.occurredAt=remote.updatedAt();event.receivedAt=now;event.disposition="Applied";delivery.events.add(event);em.persist(event);
+        tx.executeWithoutResult(s->{var delivery=em.find(DeliveryRow.class,localId,LockModeType.PESSIMISTIC_WRITE);var now=clock.instant();var reported=map(remote.status());var decision=ProviderStatePolicy.delivery(delivery.status,reported,delivery.lastProviderEventAt,remote.updatedAt());if(decision==ProviderStatePolicy.Decision.Applied){delivery.status=reported;delivery.lastProviderEventAt=remote.updatedAt();}delivery.updatedAt=now;
+            var event=new DeliveryEventRow();event.id=UUID.randomUUID();event.delivery=delivery;event.providerEventId="reconcile-"+remote.updatedAt();event.providerStatus=remote.status();event.occurredAt=remote.updatedAt();event.receivedAt=now;event.disposition=decision.name();delivery.events.add(event);em.persist(event);
             var order=em.find(OrderRow.class,delivery.orderId,LockModeType.PESSIMISTIC_WRITE);if("Delivered".equals(delivery.status)&&!"Delivered".equals(order.status)){var from=order.status;order.status="Delivered";order.updatedAt=now;history(order.id,from,"Delivered",now,"Delivery completed");}});return true;}
     public void cancelForOrder(UUID orderId){var remoteId=tx.execute(s->em.createQuery("select d.providerDeliveryId from DeliveryRow d where d.orderId=:order and d.status not in ('Cancelled','Delivered','Returned')",String.class)
             .setParameter("order",orderId).getResultStream().findFirst().orElse(null));if(remoteId==null)return;var token=token();

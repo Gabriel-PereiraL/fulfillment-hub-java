@@ -18,6 +18,7 @@ import org.springframework.web.client.RestClientResponseException;
 import org.springframework.web.client.RestClientException;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import dev.fulfillmenthub.runtime.providers.ProviderResilience;
+import dev.fulfillmenthub.runtime.providers.ProviderStatePolicy;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 @Service
@@ -69,7 +70,8 @@ public class PaymentGatewayClient {
         var attempt=payment.attempts.stream().filter(a->a.completedAt==null).findFirst().orElse(null);
         if(attempt!=null)attempt.completedAt=now;
         if(remote==null){if(attempt!=null){attempt.outcome="PermanentFailure";attempt.errorCode=failure;}payment.status="Failed";payment.failureReason=failure;}else{
-            if(attempt!=null){attempt.outcome="Succeeded";attempt.providerReference=remote.id();}payment.providerPaymentId=remote.id();payment.status=map(remote.status());payment.failureReason=remote.failureCode();payment.lastProviderEventAt=remote.updatedAt();}
+            if(attempt!=null){attempt.outcome="Succeeded";attempt.providerReference=remote.id();}payment.providerPaymentId=remote.id();var reported=map(remote.status());var decision=ProviderStatePolicy.payment(payment.status,reported,payment.lastProviderEventAt,remote.updatedAt());
+            if(decision==ProviderStatePolicy.Decision.Applied){payment.status=reported;payment.failureReason=remote.failureCode();payment.lastProviderEventAt=remote.updatedAt();}}
         payment.updatedAt=now;var order=em.find(OrderRow.class,payment.orderId,LockModeType.PESSIMISTIC_WRITE);
         if("Paid".equals(payment.status)&&("Created".equals(order.status)||"AwaitingPayment".equals(order.status))){var from=order.status;order.status="Paid";order.updatedAt=now;history(order.id,from,"Paid",now,"Payment settled");em.persist(OutboxRow.pending("OrderPaid",order.id,now));}
         else if("Paid".equals(payment.status)&&!"Paid".equals(previousPaymentStatus)&&"Cancelled".equals(order.status)){em.persist(OutboxRow.pending("PaymentPaid",order.id,now));}

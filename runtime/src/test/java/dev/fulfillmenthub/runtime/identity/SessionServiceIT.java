@@ -308,13 +308,13 @@ class SessionServiceIT {
         assertEquals(1,outbox.drain(50));assertEquals(1,broker.consume());
         var paymentId=tx.execute(status->(UUID)em.createNativeQuery("select id from payments where order_id=:order")
                 .setParameter("order",placed.id()).getSingleResult());
-        var providerEffects=new AtomicInteger();var providerKeys=java.util.concurrent.ConcurrentHashMap.<String>newKeySet();var returnResponses=new AtomicBoolean();var remoteId="pay_"+UUID.randomUUID().toString().replace("-","");
+        var providerEffects=new AtomicInteger();var providerKeys=java.util.concurrent.ConcurrentHashMap.<String>newKeySet();var returnResponses=new AtomicBoolean();var providerStatus=new java.util.concurrent.atomic.AtomicReference<>("pending");var remoteId="pay_"+UUID.randomUUID().toString().replace("-","");
         var server=HttpServer.create(new InetSocketAddress("127.0.0.1",0),0);
         server.createContext("/payments/v1/payments",exchange->{
-            if(providerKeys.add(exchange.getRequestHeaders().getFirst("Idempotency-Key")))providerEffects.incrementAndGet();exchange.getRequestBody().readAllBytes();
+            var providerKey=exchange.getRequestHeaders().getFirst("Idempotency-Key");if(providerKey!=null&&providerKeys.add(providerKey))providerEffects.incrementAndGet();exchange.getRequestBody().readAllBytes();
             if(!returnResponses.get()){exchange.close();return;}
-            var json=("{\"id\":\"%s\",\"status\":\"pending\",\"amount\":{\"amount\":\"25.00\",\"currency\":\"BRL\"},\"failure_code\":null,\"updated_at\":\"%s\"}")
-                    .formatted(remoteId,Instant.now());var body=json.getBytes(StandardCharsets.UTF_8);
+            var json=("{\"id\":\"%s\",\"status\":\"%s\",\"amount\":{\"amount\":\"25.00\",\"currency\":\"BRL\"},\"failure_code\":null,\"updated_at\":\"%s\"}")
+                    .formatted(remoteId,providerStatus.get(),Instant.now());var body=json.getBytes(StandardCharsets.UTF_8);
             exchange.getResponseHeaders().add("Content-Type","application/json");exchange.sendResponseHeaders(200,body.length);exchange.getResponseBody().write(body);exchange.close();
         });server.start();
         try{
@@ -328,6 +328,8 @@ class SessionServiceIT {
             assertEquals(2,scalar("select count(*) from payment_attempts where payment_id='"+paymentId+"'"));
             assertEquals(1,providerEffects.get(),"the stable idempotency key must represent one remote payment");
             assertEquals(1,providerKeys.size());
+            providerStatus.set("paid");assertTrue(gateway.verifyAndApply(remoteId));assertEquals("Paid",textScalar("select status from payments where id='"+paymentId+"'"));
+            providerStatus.set("pending");assertTrue(gateway.verifyAndApply(remoteId));assertEquals("Paid",textScalar("select status from payments where id='"+paymentId+"'"),"a later stale-state snapshot cannot regress a settled payment");
         }finally{server.stop(0);}
     }
 

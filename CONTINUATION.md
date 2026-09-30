@@ -23,7 +23,9 @@ Fonte .NET preservada sem alterações: `C:\Users\Gabriel\Documents\Codex\2026-0
 - Evidência da etapa em 30/09/2026: 44 testes de domínio, 3 de resiliência e 1 integração direcionada passaram.
 - F03 concluído localmente: a retomada recarrega entrega/quote persistidas, renova quote expirada, mantém a chave e adota duplicate/conflict do provider.
 - `deliveryRecoversPersistedQuoteAndAdoptsDuplicateAfterLostResponse` passou; houve uma entrega, uma quote e uma chave após resposta perdida.
-- Próximo passo imediato: commit `fix(delivery)` e F04, centralizando aplicação de estados externos e bloqueando regressões fora de ordem.
+- F04 concluído localmente com `ProviderStatePolicy`, usado pelos caminhos reais de pagamento e entrega.
+- Cinco testes de política passaram; o teste integrado confirmou que Paid permanece Paid após snapshot Pending posterior.
+- Próximo passo imediato: commit `fix(domain)` e F05, tornando chave idempotente e pedido atomicamente recuperáveis.
 
 ## Evidência anterior preservada
 
