@@ -1,9 +1,9 @@
-# Checkpoint de continuidade — concluído em 30/09/2026
+# Checkpoint de continuidade — nova auditoria adversarial
 
-A remediação técnica e o reposicionamento do GitHub foram concluídos e publicados. O relatório canônico é `docs/FINAL_REPORT_2026-09-30.md`; as evidências por finding estão em `docs/AUDIT_REMEDIATION_2026-09-29.md`.
+Uma auditoria adversarial posterior encontrou novos casos reproduzidos F16–F26/F31 e riscos inferidos F27/F28/F30. O plano e o estado ativo ficam em `docs/ADVERSARIAL_REMEDIATION_2026-09-30.md`. O relatório anterior permanece como registro histórico e não representa mais o estado final.
 
 Regressão local final: 44 testes de domínio, 8 unitários de runtime, 14 integrações PostgreSQL/LocalStack, 6 migrations Flyway, stack Compose saudável, E2E até `Delivered`, Kubeconform 15/15 e Gitleaks limpo nos repositórios Java e Sistema-portaria.
 
-Pendências declaradas, sem claim de sucesso: F11 não está integralmente resolvido (continuidade completa de traces e métricas de idade/backlog); Trivy local das três imagens ficou inconclusivo e depende da matriz remota do CI; restart real em Kubernetes não foi executado; Sistema-portaria não teve execução Python local. Se credenciais históricas desse repositório foram reais, devem ser rotacionadas. O histórico não foi reescrito.
+Prioridade imediata: corrigir e testar os blockers Java F16–F20/F31, depois F21–F26, e só então tratar os riscos inferidos nas outras stacks e executar regressão completa.
 
 Nunca registrar tokens ou credenciais neste arquivo.
