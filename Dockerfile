@@ -9,6 +9,7 @@ RUN mvn -B -ntp -pl ${MODULE} -am -DskipTests package
 FROM ${RUNTIME_IMAGE}
 ARG MODULE
 RUN apt-get update \
+    && apt-get upgrade --yes \
     && apt-get install --yes --no-install-recommends curl \
     && rm -rf /var/lib/apt/lists/*
 RUN groupadd --system app && useradd --system --gid app --home-dir /app app
