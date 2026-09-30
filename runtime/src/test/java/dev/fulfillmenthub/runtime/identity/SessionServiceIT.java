@@ -21,6 +21,7 @@ import dev.fulfillmenthub.runtime.messaging.SqsBroker;
 import dev.fulfillmenthub.runtime.messaging.SqsConfiguration;
 import dev.fulfillmenthub.runtime.messaging.MessagingSettings;
 import dev.fulfillmenthub.runtime.webhook.WebhookInboxService;
+import dev.fulfillmenthub.runtime.webhook.WebhookProcessingService;
 import jakarta.persistence.EntityManager;
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
@@ -60,7 +61,7 @@ class SessionServiceIT {
     @EnableConfigurationProperties({TokenSettings.class, MessagingSettings.class})
     @EntityScan("dev.fulfillmenthub.runtime")
     @Import({RuntimeConfiguration.class, SessionService.class, OrderPlacementService.class, OrderService.class,
-            OutboxProcessor.class, WebhookInboxService.class, PaymentWorkflowService.class, IdempotencyService.class, SqsConfiguration.class, SqsBroker.class})
+            OutboxProcessor.class, WebhookInboxService.class, WebhookProcessingService.class, PaymentWorkflowService.class, IdempotencyService.class, SqsConfiguration.class, SqsBroker.class})
     static class TestApplication {}
 
     private ConfigurableApplicationContext context;
@@ -72,6 +73,7 @@ class SessionServiceIT {
     private OrderService orderQueries;
     private OutboxProcessor outbox;
     private WebhookInboxService webhooks;
+    private WebhookProcessingService webhookProcessor;
     private SqsBroker broker;
     private IdempotencyService idempotency;
 
@@ -108,6 +110,7 @@ class SessionServiceIT {
         orderQueries = context.getBean(OrderService.class);
         outbox = context.getBean(OutboxProcessor.class);
         webhooks = context.getBean(WebhookInboxService.class);
+        webhookProcessor = context.getBean(WebhookProcessingService.class);
         broker = context.getBean(SqsBroker.class);
         idempotency = context.getBean(IdempotencyService.class);
     }
@@ -301,6 +304,15 @@ class SessionServiceIT {
         assertTrue(duplicate.duplicate());
         assertEquals(first.id(), duplicate.id());
         assertEquals(1, scalar("select count(*) from webhook_events where payload->>'id'='evt-1'"));
+    }
+
+    @Test
+    void twoWorkersCannotClaimTheSameWebhookAndExpiredLeaseIsRecoverable() throws Exception {
+        var body="{\"id\":\"evt-claim\",\"type\":\"informational.event\"}".getBytes(StandardCharsets.UTF_8);var receipt=webhooks.store("unknown",webhooks.identify(body),body,"corr-claim");var gate=new CountDownLatch(1);
+        try(var executor=Executors.newFixedThreadPool(2)){var task=(java.util.concurrent.Callable<Boolean>)()->{gate.await();return webhookProcessor.processOne(receipt.id());};var first=executor.submit(task);var second=executor.submit(task);gate.countDown();assertNotEquals(first.get(),second.get());}
+        assertEquals(1,scalar("select attempts from webhook_events where id='"+receipt.id()+"'"));
+        tx.executeWithoutResult(status->em.createNativeQuery("update webhook_events set status='Processing',owner=:owner,locked_until=now()-interval '1 second',next_attempt_at=now() where id=:id").setParameter("owner",UUID.randomUUID()).setParameter("id",receipt.id()).executeUpdate());
+        assertTrue(webhookProcessor.processOne(receipt.id()));assertEquals(2,scalar("select attempts from webhook_events where id='"+receipt.id()+"'"));
     }
 
     @Test

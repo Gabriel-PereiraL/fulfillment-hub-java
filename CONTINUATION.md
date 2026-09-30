@@ -27,7 +27,9 @@ Fonte .NET preservada sem alterações: `C:\Users\Gabriel\Documents\Codex\2026-0
 - Cinco testes de política passaram; o teste integrado confirmou que Paid permanece Paid após snapshot Pending posterior.
 - F05 concluído localmente com migration V5: chave e `orderId` são ligados na transação do pedido/estoque/outbox; replay recupera o pedido se `complete` não ocorreu.
 - `committedOrderIsRecoveredWhenIdempotencyCompletionNeverRan` passou e provou um pedido, uma reserva de estoque e preservação da chave.
-- Próximo passo imediato: commit `fix(idempotency)` e F06/F07, adicionando claims duráveis com owner/token/lease.
+- F06/F07 concluídos localmente com migration V6: consumer e webhook fazem claim antes do efeito, usam owner/lease e conclusão condicionada ao token.
+- O teste concorrente da inbox passou e comprovou um claim entre dois workers e retomada após lease expirado.
+- Próximo passo imediato: commit `fix(messaging)` e resolver F08–F10/F15 em outbox/reconciliação/classificação de falhas.
 
 ## Evidência anterior preservada
 

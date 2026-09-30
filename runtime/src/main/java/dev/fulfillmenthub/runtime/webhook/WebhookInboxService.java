@@ -21,7 +21,7 @@ import org.springframework.transaction.support.TransactionTemplate;import tools.
   try{return tx.execute(s->{var existing=em.createQuery("select w.id from WebhookEventRow w where w.provider=:p and w.providerEventId=:e",UUID.class)
     .setParameter("p",provider).setParameter("e",identity.id()).getResultStream().findFirst().orElse(null);if(existing!=null)return new Receipt(existing,true);
    var row=new WebhookEventRow();row.id=UUID.randomUUID();row.provider=provider;row.providerEventId=identity.id();row.eventType=identity.type();
-   row.payload=new String(body,StandardCharsets.UTF_8);row.status="Received";row.receivedAt=clock.instant();row.correlationId=correlation;em.persist(row);em.flush();return new Receipt(row.id,false);});
+   row.payload=new String(body,StandardCharsets.UTF_8);row.status="Received";row.receivedAt=clock.instant();row.nextAttemptAt=row.receivedAt;row.correlationId=correlation;em.persist(row);em.flush();return new Receipt(row.id,false);});
   }catch(DataIntegrityViolationException duplicate){var id=tx.execute(s->em.createQuery("select w.id from WebhookEventRow w where w.provider=:p and w.providerEventId=:e",UUID.class)
     .setParameter("p",provider).setParameter("e",identity.id()).getSingleResult());return new Receipt(id,true);}}
 }
