@@ -5,6 +5,7 @@ import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.Set;
 import java.nio.charset.StandardCharsets;
 import java.util.HexFormat;
@@ -69,14 +70,17 @@ public class SimulatorController {
                                                @RequestHeader(name="Idempotency-Key") String key,
                                                @RequestBody PaymentRequest request) {
         if (!authorized(authorization, paymentToken)) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
-        var existing = paymentKeys.get(key);
-        if (existing != null) return ResponseEntity.ok(payments.get(existing));
-        var cents = request.amount().amount().movePointRight(2).longValueExact();
-        var status = cents % 100 == 99 ? "failed" : cents % 100 == 98 ? "paid" : "pending";
-        var id = "pay_" + compactId();
-        var payment = new PaymentView(id, status, request.amount(), "failed".equals(status) ? "card_declined" : null, Instant.now());
-        payments.put(id, payment); paymentKeys.put(key, id);
-        return ResponseEntity.created(java.net.URI.create("/payments/v1/payments/" + id)).body(payment);
+        var created = new AtomicBoolean();
+        var id = paymentKeys.computeIfAbsent(key, ignored -> {
+            var cents = request.amount().amount().movePointRight(2).longValueExact();
+            var status = cents % 100 == 99 ? "failed" : cents % 100 == 98 ? "paid" : "pending";
+            var newId = "pay_" + compactId();
+            payments.put(newId, new PaymentView(newId, status, request.amount(), "failed".equals(status) ? "card_declined" : null, Instant.now()));
+            created.set(true);
+            return newId;
+        });
+        var payment = payments.get(id);
+        return created.get() ? ResponseEntity.created(java.net.URI.create("/payments/v1/payments/" + id)).body(payment) : ResponseEntity.ok(payment);
     }
 
     @GetMapping("/payments/v1/payments/{id}")
@@ -116,11 +120,12 @@ public class SimulatorController {
     @PostMapping("/delivery/v1/customers/{customerId}/deliveries")
     ResponseEntity<DeliveryView> createDelivery(@RequestHeader(name="Authorization",required=false)String authorization,
             @RequestHeader(name="Idempotency-Key")String key,@PathVariable("customerId") String customerId,@RequestBody DeliveryRequest request){
-        if(!bearer(authorization))return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();var existing=deliveryKeys.get(key);
-        if(existing!=null)return ResponseEntity.status(HttpStatus.CONFLICT).header("X-Existing-Delivery-Id",existing).body(deliveries.get(existing));
+        if(!bearer(authorization))return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         var quote=quotes.get(request.quoteId());if(quote==null||quote.expiresAt().isBefore(Instant.now()))return ResponseEntity.status(422).build();
-        var id="del_"+compactId();var delivery=new DeliveryView(id,"pending",quote.fee(),"http://localhost/track/"+id,Instant.now());
-        deliveries.put(id,delivery);deliveryKeys.put(key,id);return ResponseEntity.status(HttpStatus.CREATED).body(delivery);}
+        var created=new AtomicBoolean();var id=deliveryKeys.computeIfAbsent(key,ignored->{var newId="del_"+compactId();
+            deliveries.put(newId,new DeliveryView(newId,"pending",quote.fee(),"http://localhost/track/"+newId,Instant.now()));created.set(true);return newId;});
+        var delivery=deliveries.get(id);return created.get()?ResponseEntity.status(HttpStatus.CREATED).body(delivery):
+                ResponseEntity.status(HttpStatus.CONFLICT).header("X-Existing-Delivery-Id",id).body(delivery);}
 
     @GetMapping("/delivery/v1/customers/{customerId}/deliveries/{id}")
     ResponseEntity<DeliveryView> getDelivery(@RequestHeader(name="Authorization",required=false)String authorization,@PathVariable("customerId") String customerId,@PathVariable("id") String id){
