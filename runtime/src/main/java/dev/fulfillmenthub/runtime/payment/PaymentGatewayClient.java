@@ -69,7 +69,8 @@ public class PaymentGatewayClient {
     private void apply(UUID paymentId,Remote remote,String failure){tx.executeWithoutResult(s->{var payment=em.find(PaymentRow.class,paymentId,LockModeType.PESSIMISTIC_WRITE);var previousPaymentStatus=payment.status;var now=clock.instant();
         var attempt=payment.attempts.stream().filter(a->a.completedAt==null).findFirst().orElse(null);
         if(attempt!=null)attempt.completedAt=now;
-        if(remote==null){if(attempt!=null){attempt.outcome="PermanentFailure";attempt.errorCode=failure;}payment.status="Failed";payment.failureReason=failure;}else{
+        if(remote==null){if(attempt!=null){attempt.outcome="PermanentFailure";attempt.errorCode=failure;}var decision=ProviderStatePolicy.payment(payment.status,"Failed",payment.lastProviderEventAt,now);
+            if(decision==ProviderStatePolicy.Decision.Applied){payment.status="Failed";payment.failureReason=failure;payment.lastProviderEventAt=now;}}else{
             if(attempt!=null){attempt.outcome="Succeeded";attempt.providerReference=remote.id();}payment.providerPaymentId=remote.id();var reported=map(remote.status());var decision=ProviderStatePolicy.payment(payment.status,reported,payment.lastProviderEventAt,remote.updatedAt());
             if(decision==ProviderStatePolicy.Decision.Applied){payment.status=reported;payment.failureReason=remote.failureCode();payment.lastProviderEventAt=remote.updatedAt();}}
         payment.updatedAt=now;var order=em.find(OrderRow.class,payment.orderId,LockModeType.PESSIMISTIC_WRITE);
