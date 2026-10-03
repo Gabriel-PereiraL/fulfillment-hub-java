@@ -11,4 +11,5 @@ evidence/raw/
 .terraform/
 *.tfstate
 *.tfstate.*
+*.tfplan
 build/aws/

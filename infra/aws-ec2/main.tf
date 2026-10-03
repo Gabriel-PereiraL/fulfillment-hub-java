@@ -11,6 +11,20 @@ data "aws_subnets" "default" {
   }
 }
 
+data "aws_subnet" "default" {
+  for_each = toset(data.aws_subnets.default.ids)
+  id       = each.value
+}
+
+data "aws_ec2_instance_type_offerings" "selected" {
+  filter {
+    name   = "instance-type"
+    values = [var.instance_type]
+  }
+
+  location_type = "availability-zone"
+}
+
 data "aws_ami" "amazon_linux" {
   most_recent = true
   owners      = ["amazon"]
@@ -68,6 +82,10 @@ resource "random_password" "seed_customer" {
 locals {
   name           = "fh-java-${var.environment}"
   parameter_path = "/fulfillment-hub-java/${var.environment}"
+  compatible_subnet_ids = sort([
+    for id, subnet in data.aws_subnet.default : id
+    if contains(data.aws_ec2_instance_type_offerings.selected.locations, subnet.availability_zone)
+  ])
   queue_names = {
     domain      = "fh-domain-events"
     domain_dlq  = "fh-domain-events-dlq"
@@ -245,7 +263,7 @@ resource "aws_eip" "app" {
 resource "aws_instance" "app" {
   ami                         = data.aws_ami.amazon_linux.id
   instance_type               = var.instance_type
-  subnet_id                   = sort(data.aws_subnets.default.ids)[0]
+  subnet_id                   = local.compatible_subnet_ids[0]
   vpc_security_group_ids      = [aws_security_group.app.id]
   iam_instance_profile        = aws_iam_instance_profile.instance.name
   associate_public_ip_address = true
