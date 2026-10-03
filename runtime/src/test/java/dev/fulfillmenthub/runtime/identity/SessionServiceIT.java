@@ -95,6 +95,7 @@ class SessionServiceIT {
                         "fulfillment.security.access-minutes=15",
                         "fulfillment.security.session-days=7",
                         "fulfillment.messaging.enabled=true",
+                        "fulfillment.messaging.provision=true",
                         "fulfillment.messaging.endpoint=" + requiredProperty("it.sqs.endpoint"),
                         "fulfillment.messaging.region=us-east-1",
                         "fulfillment.messaging.domain-queue=fh-domain-events-it",
