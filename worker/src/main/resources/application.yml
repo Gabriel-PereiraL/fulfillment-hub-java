@@ -28,7 +28,8 @@ fulfillment:
     poll-ms: 500
   messaging:
     enabled: ${MESSAGING_ENABLED:false}
-    endpoint: ${SQS_ENDPOINT:http://localhost:4566}
+    provision: ${SQS_PROVISION:true}
+    endpoint: ${SQS_ENDPOINT:}
     region: ${AWS_REGION:us-east-1}
     domain-queue: fh-domain-events
     domain-dlq: fh-domain-events-dlq

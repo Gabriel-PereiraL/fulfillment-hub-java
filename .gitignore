@@ -8,3 +8,7 @@
 *.log
 evidence/raw/
 .audit-artifacts/
+.terraform/
+*.tfstate
+*.tfstate.*
+build/aws/

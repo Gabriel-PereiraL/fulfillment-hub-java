@@ -21,6 +21,10 @@ public final class WebhookQueue {
     public WebhookQueue(SqsClient sqs, MessagingSettings settings) { this.sqs=sqs; this.settings=settings; }
 
     @PostConstruct void provision() {
+        if (!settings.provision()) {
+            queueUrl=sqs.getQueueUrl(b->b.queueName(settings.webhookQueue())).queueUrl();
+            return;
+        }
         var dlq=sqs.createQueue(b->b.queueName(settings.webhookDlq())).queueUrl();
         var arn=sqs.getQueueAttributes(b->b.queueUrl(dlq).attributeNames(QueueAttributeName.QUEUE_ARN)).attributes().get(QueueAttributeName.QUEUE_ARN);
         queueUrl=sqs.createQueue(b->b.queueName(settings.webhookQueue()).attributes(Map.of(

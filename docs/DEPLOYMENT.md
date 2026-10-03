@@ -1,5 +1,7 @@
 # Deployment and operations
 
+The repository includes a disposable AWS EC2 deployment under `infra/aws-ec2`. It uses real SQS, a private S3 artifact bucket, an instance IAM Role and SSM Parameter Store without static AWS credentials on the host. See [AWS_EC2_DEPLOYMENT.md](AWS_EC2_DEPLOYMENT.md).
+
 ## Release order
 
 1. Build immutable API, worker and simulator images from the same commit.

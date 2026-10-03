@@ -26,6 +26,7 @@ public class SqsBroker implements OutboxHandler {
     public SqsBroker(SqsClient sqs,MessagingSettings settings,PaymentWorkflowService payments,org.springframework.beans.factory.ObjectProvider<DeliveryWorkflowService> deliveries,org.springframework.beans.factory.ObjectProvider<PaymentGatewayClient> paymentGateway,EntityManager em,TransactionTemplate tx,Clock clock){
         this.sqs=sqs;this.settings=settings;this.payments=payments;this.deliveries=deliveries;this.paymentGateway=paymentGateway;this.em=em;this.tx=tx;this.clock=clock;}
     @PostConstruct public void provision(){
+        if(!settings.provision()){domainUrl=sqs.getQueueUrl(b->b.queueName(settings.domainQueue())).queueUrl();return;}
         var dlqUrl=create(settings.domainDlq(),Map.of());var arn=sqs.getQueueAttributes(b->b.queueUrl(dlqUrl).attributeNames(QueueAttributeName.QUEUE_ARN)).attributes().get(QueueAttributeName.QUEUE_ARN);
         domainUrl=create(settings.domainQueue(),Map.of(QueueAttributeName.VISIBILITY_TIMEOUT,"60",QueueAttributeName.RECEIVE_MESSAGE_WAIT_TIME_SECONDS,"20",
                 QueueAttributeName.REDRIVE_POLICY,"{\"deadLetterTargetArn\":\""+arn+"\",\"maxReceiveCount\":\"5\"}"));

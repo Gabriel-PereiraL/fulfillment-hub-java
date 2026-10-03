@@ -6,6 +6,32 @@ on:
 permissions:
   contents: read
 jobs:
+  infrastructure:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd
+        with:
+          terraform_version: 1.16.5
+      - name: Terraform format and validation
+        working-directory: infra/aws-ec2
+        run: |
+          terraform fmt -check -recursive
+          terraform init -backend=false -input=false
+          terraform validate
+      - name: AWS Compose validation
+        env:
+          AWS_REGION: us-east-1
+          PUBLIC_HOSTNAME: 127-0-0-1.nip.io
+          DATABASE_PASSWORD: validation-only
+          JWT_SIGNING_KEY: validation-only-signing-key-at-least-thirty-two-bytes
+          PAYMENT_WEBHOOK_KEY: validation-only
+          DELIVERY_WEBHOOK_KEY: validation-only
+          PROVIDER_TOKEN: validation-only
+          SEED_ADMIN_PASSWORD: validation-only
+          SEED_CUSTOMER_PASSWORD: validation-only
+        run: docker compose -f infra/aws-ec2/compose.aws.yaml config --quiet
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 30

@@ -38,6 +38,7 @@ O domínio permanece independente do framework. `runtime` concentra JPA, transa�
 - Spring MVC, Security Resource Server, JPA/Hibernate e Flyway
 - PostgreSQL 17.6
 - AWS SDK v2 e SQS; LocalStack no ambiente local
+- Terraform para um ambiente AWS descartável com EC2, S3 privado, IAM Role, SQS/DLQ, Parameter Store e HTTPS
 - Resilience4j para retry seletivo e circuit breaker dos provedores
 - Micrometer, Prometheus e OpenTelemetry
 - JUnit Jupiter 5.14.4
@@ -117,4 +118,4 @@ O Grafana fica em `http://127.0.0.1:3000`. O endpoint Prometheus da API exige au
 
 Migrations e seed são etapas explícitas e idempotentes. A API só inicia depois dessas etapas no Compose. O worker provisiona filas e DLQs locais, processa outbox/webhooks e executa reconciliação. O endpoint de readiness depende do PostgreSQL, sem transformar indisponibilidade transitória do broker em remoção de todas as instâncias da API.
 
-AWS services are simulated locally with LocalStack. The repository demonstrates deployment design and operational fundamentals; it does not claim a production AWS deployment. Deliberate differences from the .NET implementation are recorded in the parity matrix and ADRs.
+Local development simulates AWS services with LocalStack. The repository is ready for a real, disposable AWS demonstration: Terraform provisions EC2, a private S3 artifact bucket, an instance IAM Role, SQS/DLQs, SSM Parameter Store and HTTPS without storing AWS access keys on the host. The exact deployment and verification procedure is in [`docs/AWS_EC2_DEPLOYMENT.md`](docs/AWS_EC2_DEPLOYMENT.md). I only describe an environment as deployed after its public health and end-to-end evidence has been collected.

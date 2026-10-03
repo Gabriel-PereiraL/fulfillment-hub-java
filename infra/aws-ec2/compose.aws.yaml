@@ -1,0 +1,121 @@
+name: fulfillment-hub-java-aws
+
+x-database-environment: &database-environment
+  DATABASE_URL: jdbc:postgresql://postgres:5432/fulfillment
+  DATABASE_USER: fulfillment
+  DATABASE_PASSWORD: ${DATABASE_PASSWORD}
+
+x-runtime-environment: &runtime-environment
+  <<: *database-environment
+  JWT_SIGNING_KEY: ${JWT_SIGNING_KEY}
+  PAYMENT_WEBHOOK_KEY: ${PAYMENT_WEBHOOK_KEY}
+  DELIVERY_WEBHOOK_KEY: ${DELIVERY_WEBHOOK_KEY}
+  MESSAGING_ENABLED: "true"
+  SQS_PROVISION: "false"
+  AWS_REGION: ${AWS_REGION}
+  PAYMENT_PROVIDER_ENABLED: "true"
+  PAYMENT_PROVIDER_URL: http://provider-simulator:8082
+  PAYMENT_PROVIDER_TOKEN: ${PROVIDER_TOKEN}
+  DELIVERY_PROVIDER_ENABLED: "true"
+  DELIVERY_PROVIDER_URL: http://provider-simulator:8082
+  DELIVERY_PROVIDER_CUSTOMER_ID: aws-demo-customer
+  DELIVERY_PROVIDER_CLIENT_ID: aws-demo-client
+  DELIVERY_PROVIDER_CLIENT_SECRET: ${PROVIDER_TOKEN}
+  OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: ""
+  TRACING_SAMPLING: "0.1"
+
+services:
+  postgres:
+    image: postgres:17.6-alpine@sha256:ef257d85f76e48da1c64832459b59fcaba1a4dac97bf5d7450c77753542eee94
+    environment:
+      POSTGRES_DB: fulfillment
+      POSTGRES_USER: fulfillment
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fulfillment -d fulfillment"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+
+  migrate:
+    image: fulfillment-hub-java-api:aws
+    command: ["migrate"]
+    environment: *database-environment
+    depends_on:
+      postgres: { condition: service_healthy }
+    restart: "no"
+
+  seed:
+    image: fulfillment-hub-java-api:aws
+    command: ["seed"]
+    environment:
+      <<: *database-environment
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD}
+      SEED_CUSTOMER_PASSWORD: ${SEED_CUSTOMER_PASSWORD}
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    restart: "no"
+
+  provider-simulator:
+    image: fulfillment-hub-java-provider-simulator:aws
+    environment:
+      PORT: 8082
+      SIMULATOR_PAYMENT_TOKEN: ${PROVIDER_TOKEN}
+      SIMULATOR_DELIVERY_CLIENT_ID: aws-demo-client
+      SIMULATOR_DELIVERY_CLIENT_SECRET: ${PROVIDER_TOKEN}
+      SIMULATOR_PAYMENT_WEBHOOK_URL: http://api:8080/api/v1/webhooks/payments
+      SIMULATOR_PAYMENT_WEBHOOK_KEY: ${PAYMENT_WEBHOOK_KEY}
+      SIMULATOR_DELIVERY_WEBHOOK_URL: http://api:8080/api/v1/webhooks/deliveries
+      SIMULATOR_DELIVERY_WEBHOOK_KEY: ${DELIVERY_WEBHOOK_KEY}
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8082/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+
+  api:
+    image: fulfillment-hub-java-api:aws
+    environment:
+      <<: *runtime-environment
+      PORT: 8080
+    depends_on:
+      seed: { condition: service_completed_successfully }
+      provider-simulator: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/health/ready"]
+      interval: 5s
+      timeout: 3s
+      retries: 40
+    restart: unless-stopped
+
+  worker:
+    image: fulfillment-hub-java-worker:aws
+    environment: *runtime-environment
+    depends_on:
+      seed: { condition: service_completed_successfully }
+      provider-simulator: { condition: service_healthy }
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2.10.2-alpine@sha256:d8c17a862962def15cde69863a3a463f25a2664942eafd7bdbf050e9c3116b83
+    environment:
+      PUBLIC_HOSTNAME: ${PUBLIC_HOSTNAME}
+    command: ["caddy", "reverse-proxy", "--from", "https://${PUBLIC_HOSTNAME}", "--to", "http://api:8080"]
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      api: { condition: service_healthy }
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
+  caddy-data:
+  caddy-config:

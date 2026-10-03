@@ -39,8 +39,8 @@ public class ApiApplication {
             try(var statement=connection.prepareStatement("""
                     insert into users(id,email,password_hash,active,security_version,roles,created_at,customer_id,version)
                     values (?,?,?,?,?,?,?,?,0) on conflict(id) do nothing""")){
-                insertUser(connection,statement,admin,"admin@fulfillment.local",encoder.encode("LocalAdminPassword!"),null,new String[]{"Admin"},now);
-                insertUser(connection,statement,customerUser,"customer@fulfillment.local",encoder.encode("LocalCustomerPassword!"),customer,new String[]{"Customer"},now);
+                insertUser(connection,statement,admin,"admin@fulfillment.local",encoder.encode(optional("SEED_ADMIN_PASSWORD", "LocalAdminPassword!")),null,new String[]{"Admin"},now);
+                insertUser(connection,statement,customerUser,"customer@fulfillment.local",encoder.encode(optional("SEED_CUSTOMER_PASSWORD", "LocalCustomerPassword!")),customer,new String[]{"Customer"},now);
             }
             try(var statement=connection.prepareStatement("""
                     insert into customers(id,version,user_id,name,email,phone,active,created_at,updated_at)
@@ -56,6 +56,10 @@ public class ApiApplication {
             }
             connection.commit();
         }catch(java.sql.SQLException failure){throw new IllegalStateException("Could not seed local database",failure);}
+    }
+    private static String optional(String name, String fallback) {
+        var value = System.getenv(name);
+        return value == null || value.isBlank() ? fallback : value;
     }
     private static void insertUser(java.sql.Connection connection,java.sql.PreparedStatement statement,UUID id,String email,String hash,UUID customer,String[] roles,Instant now)throws java.sql.SQLException{
         statement.setObject(1,id);statement.setString(2,email);statement.setString(3,hash);statement.setBoolean(4,true);statement.setObject(5,UUID.randomUUID());
