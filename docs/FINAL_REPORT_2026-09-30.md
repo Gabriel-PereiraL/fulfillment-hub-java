@@ -49,7 +49,7 @@ CI uses Maven Wrapper 3.9.16, immutable Action SHAs, minimal permissions, timeou
 
 ## 5. Java versus .NET
 
-Both implementations now demonstrate the same core guarantees: atomic local writes, outbox messaging, idempotency, webhook authentication, provider recovery, reconciliation, and operational health. Java makes ownership/lease and provider-state policy explicit in its JPA runtime; .NET remains the older functional reference with broader historical maturity. The Java version has direct tests for the newly audited crash windows. Neither repository proves production AWS operation, global exactly-once delivery, or behavior under production-scale load.
+Both implementations now demonstrate the same core guarantees: atomic local writes, outbox messaging, idempotency, webhook authentication, provider recovery, reconciliation, and operational health. Java makes ownership/lease and provider-state policy explicit in its JPA runtime; .NET remains the older functional reference with broader historical maturity. The Java version has direct tests for the newly audited crash windows. A disposable Java demonstration was subsequently deployed and exercised on AWS on 2026-10-03; neither repository claims production-scale operation, global exactly-once delivery, or behavior under production-scale load.
 
 ## 6. GitHub profile
 
@@ -75,7 +75,7 @@ The relevant evidence is concrete: atomic order/stock commits, idempotent reques
 - Full cross-process trace-context restoration and workflow backlog/age gauges remain incomplete.
 - Container vulnerability results depend on the remote CI run because the final local three-image scan was inconclusive.
 - Kubernetes restart/persistence behavior was manifest-validated but not exercised on a live cluster.
-- No performance, soak, chaos, multi-region, or production AWS evidence exists.
+- No performance, soak, chaos, multi-region, high-availability, or production-scale AWS evidence exists. The Java repository has evidence from a single-instance AWS portfolio deployment dated 2026-10-03.
 - `Sistema-portaria` needs credential rotation if the historical values were ever real, plus execution validation in a Python environment.
 - GitHub pin order requires a manual UI change.
 

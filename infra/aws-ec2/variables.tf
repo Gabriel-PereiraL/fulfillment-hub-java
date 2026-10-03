@@ -27,3 +27,15 @@ variable "artifact_key" {
   type        = string
   default     = "deploy/images.tar"
 }
+
+variable "monthly_budget_usd" {
+  description = "Monthly AWS cost budget for this account."
+  type        = number
+  default     = 100
+}
+
+variable "budget_stop_percentage" {
+  description = "Percentage of the monthly budget that automatically stops the demo EC2 instance."
+  type        = number
+  default     = 50
+}

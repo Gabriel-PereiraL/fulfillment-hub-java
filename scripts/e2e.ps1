@@ -1,6 +1,8 @@
 param(
     [string]$ApiUrl = 'http://127.0.0.1:8080',
-    [int]$TimeoutSeconds = 45
+    [int]$TimeoutSeconds = 45,
+    [string]$Email = 'customer@fulfillment.local',
+    [string]$Password = 'LocalCustomerPassword!'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -10,8 +12,8 @@ function Assert-Equal($Expected, $Actual, [string]$Message) {
 }
 
 $login = Invoke-RestMethod -Method Post -Uri "$ApiUrl/api/v1/auth/login" -ContentType 'application/json' -Body (@{
-    email = 'customer@fulfillment.local'
-    password = 'LocalCustomerPassword!'
+    email = $Email
+    password = $Password
 } | ConvertTo-Json)
 
 $headers = @{ Authorization = "Bearer $($login.accessToken)" }

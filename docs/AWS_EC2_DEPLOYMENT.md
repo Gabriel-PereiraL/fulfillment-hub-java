@@ -32,7 +32,23 @@ The instance stores no AWS access key. The AWS SDK uses the default credential c
 - domain-event and webhook SQS queues, each with a DLQ and five-receive redrive policy;
 - generated application secrets stored as `SecureString` parameters;
 - an EC2 IAM Role limited to the deployment prefix in S3, the application parameter path, the four queues and Systems Manager management;
-- a Systems Manager path for deployment without SSH or an inbound port 22.
+- a Systems Manager path for deployment without SSH or an inbound port 22;
+- a USD 100 monthly AWS Budget with an automatic action that stops the demonstration EC2 instance when actual cost reaches 50%.
+
+## Verified deployment
+
+I deployed this environment to AWS `us-east-1` on 2026-10-03. At verification time, the public endpoint was `https://34-237-247-213.nip.io`.
+
+I collected the following evidence from the running environment:
+
+- `/health/live` returned HTTP 200 and `Healthy` over HTTPS;
+- `/health/ready` returned HTTP 200 and `Healthy` over HTTPS;
+- the EC2 instance was online in Systems Manager without SSH ingress;
+- the AWS Budget reported `HEALTHY`, a USD 100 monthly limit and zero calculated spend at that instant;
+- its automatic action was in `STANDBY`, configured to stop instance `i-00e36d3159c823180` at 50% of actual monthly spend;
+- the public end-to-end test authenticated the seeded customer, read the catalog, created order `3702ed54-5531-4855-a946-c5d5879f185e`, proved idempotent replay and payload-mismatch rejection, then observed payment and delivery complete with final state `Delivered`.
+
+The URL is evidence of the deployed demonstration and remains available only while I keep the disposable environment running. This single-instance topology is a portfolio environment, not a production or high-availability claim.
 
 ## Prerequisites
 
@@ -42,7 +58,7 @@ The instance stores no AWS access key. The AWS SDK uses the default credential c
 - PowerShell 7;
 - a default VPC in the selected region.
 
-This creates billable resources, including EC2, EBS and a public IPv4 address. I check AWS Free Tier/credit eligibility in the account before applying and destroy the environment when the demonstration ends.
+This creates billable resources, including EC2, EBS and a public IPv4 address. I check AWS Free Tier/credit eligibility in the account before applying and destroy the environment when the demonstration ends. AWS Budgets evaluates billing data periodically, so its automatic stop is a delayed safety control rather than a real-time hard spending cap.
 
 ## Deploy
 
@@ -85,7 +101,22 @@ aws ssm get-parameter `
   --output text
 ```
 
-The deployment is only complete after both health endpoints answer successfully and a login/order flow reaches `Delivered`. Until that evidence exists, I describe the repository as **ready for AWS deployment**, not as already deployed.
+Run the same public end-to-end flow without printing the generated password:
+
+```powershell
+$password = aws ssm get-parameter `
+  --name /fulfillment-hub-java/dev/seed-customer-password `
+  --with-decryption `
+  --query Parameter.Value `
+  --output text
+
+./scripts/e2e.ps1 `
+  -ApiUrl (terraform -chdir=infra/aws-ec2 output -raw api_url) `
+  -Password $password `
+  -TimeoutSeconds 120
+```
+
+I only describe a deployment as complete after both health endpoints answer successfully and a login/order flow reaches `Delivered`.
 
 ## Operate and inspect
 

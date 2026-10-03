@@ -301,3 +301,96 @@ resource "aws_eip_association" "app" {
   allocation_id = aws_eip.app.id
   instance_id   = aws_instance.app.id
 }
+
+resource "aws_budgets_budget" "monthly" {
+  name         = "${local.name}-monthly-cost"
+  budget_type  = "COST"
+  limit_amount = tostring(var.monthly_budget_usd)
+  limit_unit   = "USD"
+  time_unit    = "MONTHLY"
+}
+
+resource "aws_iam_role" "budget_action" {
+  name = "${local.name}-budget-action"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Principal = {
+        Service = "budgets.amazonaws.com"
+      }
+      Action = "sts:AssumeRole"
+      Condition = {
+        StringEquals = {
+          "aws:SourceAccount" = data.aws_caller_identity.current.account_id
+        }
+      }
+    }]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "budget_action" {
+  role       = aws_iam_role.budget_action.name
+  policy_arn = "arn:aws:iam::aws:policy/AWSBudgetsActions_RolePolicyForResourceAdministrationWithSSM"
+}
+
+resource "aws_sns_topic" "budget_alerts" {
+  name = "${local.name}-budget-alerts"
+}
+
+data "aws_iam_policy_document" "budget_alerts" {
+  statement {
+    sid       = "AllowBudgetsToPublish"
+    effect    = "Allow"
+    actions   = ["sns:Publish"]
+    resources = [aws_sns_topic.budget_alerts.arn]
+
+    principals {
+      type        = "Service"
+      identifiers = ["budgets.amazonaws.com"]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "aws:SourceAccount"
+      values   = [data.aws_caller_identity.current.account_id]
+    }
+  }
+}
+
+resource "aws_sns_topic_policy" "budget_alerts" {
+  arn    = aws_sns_topic.budget_alerts.arn
+  policy = data.aws_iam_policy_document.budget_alerts.json
+}
+
+resource "aws_budgets_budget_action" "stop_demo_instance" {
+  budget_name        = aws_budgets_budget.monthly.name
+  action_type        = "RUN_SSM_DOCUMENTS"
+  approval_model     = "AUTOMATIC"
+  notification_type  = "ACTUAL"
+  execution_role_arn = aws_iam_role.budget_action.arn
+
+  action_threshold {
+    action_threshold_type  = "PERCENTAGE"
+    action_threshold_value = var.budget_stop_percentage
+  }
+
+  definition {
+    ssm_action_definition {
+      action_sub_type = "STOP_EC2_INSTANCES"
+      instance_ids    = [aws_instance.app.id]
+      region          = var.aws_region
+    }
+  }
+
+  subscriber {
+    address           = aws_sns_topic.budget_alerts.arn
+    subscription_type = "SNS"
+  }
+
+  depends_on = [
+    aws_iam_role_policy_attachment.budget_action,
+    aws_sns_topic_policy.budget_alerts
+  ]
+}

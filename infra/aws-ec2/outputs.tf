@@ -22,3 +22,11 @@ output "iam_role" {
 output "aws_region" {
   value = var.aws_region
 }
+
+output "monthly_budget_usd" {
+  value = aws_budgets_budget.monthly.limit_amount
+}
+
+output "automatic_stop_at_usd" {
+  value = var.monthly_budget_usd * var.budget_stop_percentage / 100
+}
